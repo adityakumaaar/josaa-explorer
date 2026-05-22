@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { CATEGORIES, INDIAN_STATES, INSTITUTE_TYPES } from "../lib/constants";
 import type { SearchParams } from "../lib/types";
 
@@ -13,6 +13,7 @@ interface Props {
 
 export default function SearchForm({ onSearch, loading, initialParams }: Props) {
   const [rank, setRank] = useState(initialParams?.rank?.toString() ?? "");
+  const [crlRank, setCrlRank] = useState(initialParams?.crl_rank?.toString() ?? "");
   const [category, setCategory] = useState(initialParams?.category ?? "General");
   const [gender, setGender] = useState(initialParams?.gender ?? "Male");
   const [homeState, setHomeState] = useState(initialParams?.home_state ?? "");
@@ -24,6 +25,26 @@ export default function SearchForm({ onSearch, loading, initialParams }: Props) 
   const [stateOpen, setStateOpen] = useState(false);
   const [stateFilter, setStateFilter] = useState("");
   const stateRef = useRef<HTMLDivElement>(null);
+
+  const [allPrograms, setAllPrograms] = useState<string[]>([]);
+  const [progOpen, setProgOpen] = useState(false);
+  const [progFilter, setProgFilter] = useState("");
+  const progRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const url =
+      instTypes.length > 0
+        ? `/api/programs?institute_types=${encodeURIComponent(instTypes.join(","))}`
+        : "/api/programs";
+    fetch(url)
+      .then((r) => r.json())
+      .then((data: string[]) => setAllPrograms(data))
+      .catch(() => {});
+  }, [instTypes]);
+
+  const filteredPrograms = allPrograms.filter((p) =>
+    p.toLowerCase().includes(progFilter.toLowerCase())
+  );
 
   const filteredStates = INDIAN_STATES.filter((s) =>
     s.toLowerCase().includes(stateFilter.toLowerCase())
@@ -46,6 +67,7 @@ export default function SearchForm({ onSearch, loading, initialParams }: Props) 
     if (!rank || !homeState) return;
     onSearch({
       rank: parseInt(rank, 10),
+      crl_rank: category !== "General" && crlRank ? parseInt(crlRank, 10) : undefined,
       category,
       gender,
       home_state: homeState,
@@ -81,6 +103,29 @@ export default function SearchForm({ onSearch, loading, initialParams }: Props) 
                      outline-none transition"
         />
       </div>
+
+      {/* CRL rank for non-General */}
+      {category !== "General" && (
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">
+            CRL (Common Rank List) rank
+            <span className="text-gray-400 font-normal ml-1">(for General/OPEN seats)</span>
+          </label>
+          <input
+            type="number"
+            min={1}
+            value={crlRank}
+            onChange={(e) => setCrlRank(e.target.value)}
+            placeholder="e.g. 25000"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm
+                       focus:border-blue-500 focus:ring-2 focus:ring-blue-200
+                       outline-none transition"
+          />
+          <p className="text-[11px] text-gray-400 mt-1">
+            Optional — shows OPEN seats you may also qualify for
+          </p>
+        </div>
+      )}
 
       {/* Category */}
       <div>
@@ -280,21 +325,73 @@ export default function SearchForm({ onSearch, loading, initialParams }: Props) 
         </div>
       </div>
 
-      {/* Program filter */}
-      <div>
+      {/* Program dropdown */}
+      <div ref={progRef} className="relative">
         <label className="block text-xs font-medium text-gray-600 mb-1">
           Program
           <span className="text-gray-400 font-normal ml-1">(optional)</span>
         </label>
-        <input
-          type="text"
-          value={programQuery}
-          onChange={(e) => setProgramQuery(e.target.value)}
-          placeholder="e.g. Computer Science"
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm
-                     focus:border-blue-500 focus:ring-2 focus:ring-blue-200
-                     outline-none transition"
-        />
+        <div className="relative">
+          <input
+            type="text"
+            value={progOpen ? progFilter : programQuery}
+            onChange={(e) => {
+              setProgFilter(e.target.value);
+              if (!progOpen) setProgOpen(true);
+            }}
+            onFocus={() => {
+              setProgOpen(true);
+              setProgFilter(programQuery);
+            }}
+            onBlur={() => setTimeout(() => setProgOpen(false), 150)}
+            placeholder="Search programs..."
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm pr-8
+                       focus:border-blue-500 focus:ring-2 focus:ring-blue-200
+                       outline-none transition"
+          />
+          {programQuery && (
+            <button
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                setProgramQuery("");
+                setProgFilter("");
+              }}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+        </div>
+        {progOpen && (
+          <ul className="absolute z-20 mt-1 w-full max-h-48 overflow-auto rounded-lg border
+                         border-gray-200 bg-white shadow-lg">
+            {filteredPrograms.slice(0, 100).map((p) => (
+              <li
+                key={p}
+                onMouseDown={() => {
+                  setProgramQuery(p);
+                  setProgFilter("");
+                  setProgOpen(false);
+                }}
+                className={`px-3 py-1.5 cursor-pointer text-sm hover:bg-blue-50
+                  ${programQuery === p ? "bg-blue-50 font-medium" : ""}`}
+              >
+                {p}
+              </li>
+            ))}
+            {filteredPrograms.length === 0 && (
+              <li className="px-3 py-1.5 text-sm text-gray-400">No matching program</li>
+            )}
+            {filteredPrograms.length > 100 && (
+              <li className="px-3 py-1.5 text-[11px] text-gray-400 text-center">
+                Type more to narrow down ({filteredPrograms.length} total)
+              </li>
+            )}
+          </ul>
+        )}
       </div>
 
       {/* Submit */}

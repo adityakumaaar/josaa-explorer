@@ -7,6 +7,7 @@ export function encodeSearchParams(params: SearchParams): string {
   p.set("gen", params.gender);
   p.set("state", params.home_state);
   if (params.pwd) p.set("pwd", "1");
+  if (params.crl_rank) p.set("crl", String(params.crl_rank));
   if (params.round_no) p.set("round", String(params.round_no));
   if (params.years?.length) p.set("years", params.years.join(","));
   if (params.institute_types?.length)
@@ -31,6 +32,9 @@ export function decodeSearchParams(search: string): SearchParams | null {
     home_state: homeState,
     pwd: p.get("pwd") === "1",
   };
+
+  const crl = p.get("crl");
+  if (crl) parsed.crl_rank = parseInt(crl, 10);
 
   const round = p.get("round");
   if (round) parsed.round_no = parseInt(round, 10);

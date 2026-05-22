@@ -25,6 +25,7 @@ export interface SearchResponse {
 
 export interface SearchParams {
   rank: number;
+  crl_rank?: number;
   category: string;
   gender: string;
   home_state: string;

@@ -128,10 +128,19 @@ def search_colleges(
     program_query: str | None = None,
     round_no: int | None = None,
     years: list[int] | None = None,
+    crl_rank: int | None = None,
 ) -> list[dict]:
     seat_types = list(CATEGORY_TO_SEAT_TYPE.get(category, ["OPEN"]))
     if pwd:
         seat_types.extend(PWD_SEAT_TYPES.get(category, []))
+
+    # Non-General students can also compete for OPEN seats using their CRL rank
+    include_open = category != "General" and crl_rank is not None
+    if include_open:
+        if "OPEN" not in seat_types:
+            seat_types.append("OPEN")
+        if pwd and "OPEN (PwD)" not in seat_types:
+            seat_types.append("OPEN (PwD)")
 
     gender_filter = ["Gender-Neutral"]
     if gender.lower() == "female":
@@ -196,12 +205,16 @@ def search_colleges(
         score = 0.0
         year_eligibility = {}
 
+        # Use CRL rank for OPEN seats, category rank for category seats
+        is_open_seat = seat_type == "OPEN" or seat_type == "OPEN (PwD)"
+        effective_rank = crl_rank if (include_open and is_open_seat) else rank
+
         for yr in all_years_sorted:
             w = RECENT_WEIGHT if yr in RECENT_YEARS else OLD_WEIGHT
             total_weight += w
             rec = filtered_years.get(yr)
             if rec and rec.closing_rank is not None:
-                eligible = rank <= rec.closing_rank
+                eligible = effective_rank <= rec.closing_rank
                 year_eligibility[str(yr)] = {
                     "eligible": eligible,
                     "closing_rank": rec.closing_rank,

@@ -48,6 +48,7 @@ def search(req: SearchRequest, db: Session = Depends(get_db)):
         program_query=req.program_query,
         round_no=req.round_no,
         years=req.years,
+        crl_rank=req.crl_rank,
     )
     results = [
         SearchResult(
@@ -147,10 +148,14 @@ def institutes(db: Session = Depends(get_db)):
 
 
 @router.get("/programs")
-def programs(db: Session = Depends(get_db)):
-    rows = (
-        db.query(distinct(ORCRRecord.program))
-        .order_by(ORCRRecord.program)
-        .all()
-    )
+def programs(
+    institute_types: str | None = None,
+    db: Session = Depends(get_db),
+):
+    q = db.query(distinct(ORCRRecord.program))
+    if institute_types:
+        types = [t.strip() for t in institute_types.split(",") if t.strip()]
+        if types:
+            q = q.filter(ORCRRecord.institute_type.in_(types))
+    rows = q.order_by(ORCRRecord.program).all()
     return [r[0] for r in rows]

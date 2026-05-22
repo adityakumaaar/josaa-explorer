@@ -2,7 +2,8 @@ from pydantic import BaseModel, Field
 
 
 class SearchRequest(BaseModel):
-    rank: int = Field(gt=0, description="CRL or category rank")
+    rank: int = Field(gt=0, description="CRL rank for General, category rank for others")
+    crl_rank: int | None = Field(default=None, gt=0, description="CRL rank for non-General categories (to check OPEN seats)")
     category: str = Field(description="General, EWS, OBC-NCL, SC, ST")
     gender: str = Field(description="Male or Female")
     home_state: str = Field(description="Home state name")
