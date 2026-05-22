@@ -28,6 +28,7 @@ class ORCRRecord(Base):
     round = Column(Integer, nullable=False)
     institute_type = Column(String, nullable=False)
     institute = Column(String, nullable=False)
+    state = Column(String, nullable=True)
     program = Column(String, nullable=False)
     quota = Column(String, nullable=False)
     seat_type = Column(String, nullable=False)
@@ -60,7 +61,7 @@ def derive_institute_type(name: str) -> str:
     n = re.sub(r"\s+", " ", name.strip().lower())
     if n.startswith("indian institute of technology"):
         return "IIT"
-    if n.startswith("national institute of technology") or "iiest" in n:
+    if "national institute of technology" in n or "iiest" in n:
         return "NIT"
     if "indian institute of information technology" in n or n.startswith("iiit"):
         return "IIIT"

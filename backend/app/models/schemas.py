@@ -14,6 +14,12 @@ class SearchRequest(BaseModel):
     program_query: str | None = Field(
         default=None, description="Partial match on program name"
     )
+    branch_keywords: list[str] | None = Field(
+        default=None, description="OR-matched keywords for branch/program filtering"
+    )
+    college_states: list[str] | None = Field(
+        default=None, description="Filter by college/institute state"
+    )
     round_no: int | None = Field(
         default=None, description="Specific round; defaults to last available"
     )
@@ -26,16 +32,19 @@ class YearEligibility(BaseModel):
     eligible: bool
     closing_rank: int | None
     round: int
+    earliest_round: int | None = None
 
 
 class SearchResult(BaseModel):
     institute: str
     institute_type: str
+    state: str | None
     program: str
     quota: str
     seat_type: str
     gender: str
     confidence_score: float
+    latest_opening_rank: int | None
     latest_closing_rank: int | None
     year_eligibility: dict[str, YearEligibility]
 

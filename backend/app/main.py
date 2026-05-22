@@ -36,3 +36,65 @@ if STATIC_DIR.is_dir():
 @app.on_event("startup")
 def on_startup():
     init_db()
+    _migrate_add_state_column()
+    _cleanup_old_years()
+    _backfill_states()
+
+
+def _migrate_add_state_column():
+    """Add state column if it doesn't exist (for existing databases)."""
+    from .models.database import engine
+    with engine.connect() as conn:
+        from sqlalchemy import text, inspect
+        inspector = inspect(engine)
+        columns = [c["name"] for c in inspector.get_columns("orcr_records")]
+        if "state" not in columns:
+            conn.execute(text("ALTER TABLE orcr_records ADD COLUMN state TEXT"))
+            conn.commit()
+            print("Added 'state' column to orcr_records")
+
+
+def _cleanup_old_years():
+    """Remove 2019 and 2020 data — no longer used."""
+    from .models.database import SessionLocal, ORCRRecord
+    db = SessionLocal()
+    try:
+        deleted = db.query(ORCRRecord).filter(ORCRRecord.year.in_([2019, 2020])).delete(synchronize_session=False)
+        if deleted:
+            db.commit()
+            print(f"Cleaned up {deleted} records from 2019/2020")
+    finally:
+        db.close()
+
+
+def _backfill_states():
+    """Populate the state column for records that don't have it yet."""
+    from sqlalchemy import distinct
+    from .models.database import SessionLocal, ORCRRecord
+    from .models.institute_states import derive_state
+
+    db = SessionLocal()
+    try:
+        institutes_without_state = [
+            r[0] for r in db.query(distinct(ORCRRecord.institute))
+            .filter(ORCRRecord.state.is_(None))
+            .all()
+        ]
+        if not institutes_without_state:
+            return
+
+        updated = 0
+        for inst_name in institutes_without_state:
+            state = derive_state(inst_name)
+            if state:
+                count = (
+                    db.query(ORCRRecord)
+                    .filter(ORCRRecord.institute == inst_name, ORCRRecord.state.is_(None))
+                    .update({"state": state}, synchronize_session=False)
+                )
+                updated += count
+        if updated:
+            db.commit()
+            print(f"Backfilled state for {updated} records ({len(institutes_without_state)} institutes)")
+    finally:
+        db.close()

@@ -13,6 +13,10 @@ export function encodeSearchParams(params: SearchParams): string {
   if (params.institute_types?.length)
     p.set("types", params.institute_types.join(","));
   if (params.program_query) p.set("prog", params.program_query);
+  if (params.branch_keywords?.length)
+    p.set("branches", params.branch_keywords.join(","));
+  if (params.college_states?.length)
+    p.set("cstates", params.college_states.join(","));
   return p.toString();
 }
 
@@ -47,6 +51,12 @@ export function decodeSearchParams(search: string): SearchParams | null {
 
   const prog = p.get("prog");
   if (prog) parsed.program_query = prog;
+
+  const branches = p.get("branches");
+  if (branches) parsed.branch_keywords = branches.split(",");
+
+  const cstates = p.get("cstates");
+  if (cstates) parsed.college_states = cstates.split(",");
 
   return parsed;
 }

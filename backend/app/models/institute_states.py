@@ -1,0 +1,188 @@
+"""Institute → State mapping used for backfilling the state column."""
+
+import re
+
+INSTITUTE_STATE_MAP: dict[str, str] = {
+    # --- NITs ---
+    "National Institute of Technology Agartala": "Tripura",
+    "National Institute of Technology Calicut": "Kerala",
+    "National Institute of Technology Delhi": "Delhi",
+    "National Institute of Technology Durgapur": "West Bengal",
+    "National Institute of Technology Goa": "Goa",
+    "National Institute of Technology Hamirpur": "Himachal Pradesh",
+    "National Institute of Technology Jamshedpur": "Jharkhand",
+    "National Institute of Technology Karnataka, Surathkal": "Karnataka",
+    "National Institute of Technology Kurukshetra": "Haryana",
+    "National Institute of Technology Manipur": "Manipur",
+    "National Institute of Technology Meghalaya": "Meghalaya",
+    "National Institute of Technology Mizoram": "Mizoram",
+    "National Institute of Technology Nagaland": "Nagaland",
+    "National Institute of Technology Patna": "Bihar",
+    "National Institute of Technology Puducherry": "Puducherry",
+    "National Institute of Technology Raipur": "Chhattisgarh",
+    "National Institute of Technology Rourkela": "Odisha",
+    "National Institute of Technology Sikkim": "Sikkim",
+    "National Institute of Technology Silchar": "Assam",
+    "National Institute of Technology Srinagar": "Jammu and Kashmir",
+    "National Institute of Technology Tiruchirappalli": "Tamil Nadu",
+    "National Institute of Technology Uttarakhand": "Uttarakhand",
+    "National Institute of Technology Warangal": "Telangana",
+    "National Institute of Technology, Andhra Pradesh": "Andhra Pradesh",
+    "National Institute of Technology Arunachal Pradesh": "Arunachal Pradesh",
+    "Dr. B R Ambedkar National Institute of Technology, Jalandhar": "Punjab",
+    "Malaviya National Institute of Technology Jaipur": "Rajasthan",
+    "Maulana Azad National Institute of Technology Bhopal": "Madhya Pradesh",
+    "Motilal Nehru National Institute of Technology Allahabad": "Uttar Pradesh",
+    "Sardar Vallabhbhai National Institute of Technology, Surat": "Gujarat",
+    "Visvesvaraya National Institute of Technology, Nagpur": "Maharashtra",
+    "Indian Institute of Engineering Science and Technology, Shibpur": "West Bengal",
+    # --- GFTIs ---
+    "Assam University, Silchar": "Assam",
+    "Birla Institute of Technology, Deoghar Off-Campus": "Jharkhand",
+    "Birla Institute of Technology, Mesra,  Ranchi": "Jharkhand",
+    "Birla Institute of Technology, Patna Off-Campus": "Bihar",
+    "Ghani Khan Choudhary Institute of Engineering and Technology, Malda, West Bengal": "West Bengal",
+    "Institute of Chemical Technology, Mumbai: Indian Oil Odisha Campus, Bhubaneswar": "Odisha",
+    "Islamic University of Science and Technology Kashmir": "Jammu and Kashmir",
+    "Pondicherry Engineering College, Puducherry": "Puducherry",
+    "Puducherry Technological University, Puducherry": "Puducherry",
+    "Punjab Engineering College, Chandigarh": "Punjab",
+}
+
+_CITY_STATE_MAP: dict[str, str] = {
+    "bombay": "Maharashtra", "mumbai": "Maharashtra",
+    "delhi": "Delhi", "new delhi": "Delhi",
+    "kanpur": "Uttar Pradesh",
+    "kharagpur": "West Bengal",
+    "madras": "Tamil Nadu", "chennai": "Tamil Nadu",
+    "roorkee": "Uttarakhand",
+    "guwahati": "Assam",
+    "varanasi": "Uttar Pradesh", "bhu": "Uttar Pradesh",
+    "hyderabad": "Telangana",
+    "indore": "Madhya Pradesh",
+    "mandi": "Himachal Pradesh",
+    "patna": "Bihar",
+    "ropar": "Punjab", "rupnagar": "Punjab",
+    "bhubaneswar": "Odisha",
+    "gandhinagar": "Gujarat",
+    "jodhpur": "Rajasthan",
+    "tirupati": "Andhra Pradesh",
+    "palakkad": "Kerala", "palghat": "Kerala",
+    "dharwad": "Karnataka",
+    "bhilai": "Chhattisgarh",
+    "goa": "Goa",
+    "jammu": "Jammu and Kashmir",
+    "dhanbad": "Jharkhand",
+    "allahabad": "Uttar Pradesh", "prayagraj": "Uttar Pradesh",
+    "bangalore": "Karnataka", "bengaluru": "Karnataka",
+    "bhopal": "Madhya Pradesh",
+    "jabalpur": "Madhya Pradesh",
+    "gwalior": "Madhya Pradesh",
+    "kancheepuram": "Tamil Nadu", "kanchipuram": "Tamil Nadu",
+    "sri city": "Andhra Pradesh",
+    "nagpur": "Maharashtra",
+    "pune": "Maharashtra",
+    "lucknow": "Uttar Pradesh",
+    "ranchi": "Jharkhand",
+    "kalyani": "West Bengal",
+    "vadodara": "Gujarat", "baroda": "Gujarat",
+    "kota": "Rajasthan",
+    "sonepat": "Haryana",
+    "una": "Himachal Pradesh",
+    "tiruchirappalli": "Tamil Nadu", "trichy": "Tamil Nadu",
+    "kurnool": "Andhra Pradesh",
+    "raichur": "Karnataka",
+    "manipur": "Manipur",
+    "agartala": "Tripura",
+    "surat": "Gujarat",
+    "jaipur": "Rajasthan",
+    "chandigarh": "Punjab",
+    "kolkata": "West Bengal",
+    "coimbatore": "Tamil Nadu",
+    "thiruvananthapuram": "Kerala", "trivandrum": "Kerala",
+    "calicut": "Kerala", "kozhikode": "Kerala",
+    "cochin": "Kerala", "kochi": "Kerala",
+    "surathkal": "Karnataka",
+    "warangal": "Telangana",
+    "rourkela": "Odisha",
+    "silchar": "Assam",
+    "durgapur": "West Bengal",
+    "jamshedpur": "Jharkhand",
+    "hamirpur": "Himachal Pradesh",
+    "kurukshetra": "Haryana",
+    "raipur": "Chhattisgarh",
+    "srinagar": "Jammu and Kashmir",
+    "sikkim": "Sikkim",
+    "mizoram": "Mizoram",
+    "meghalaya": "Meghalaya",
+    "nagaland": "Nagaland",
+    "puducherry": "Puducherry", "pondicherry": "Puducherry",
+    "arunachal pradesh": "Arunachal Pradesh",
+    "andhra pradesh": "Andhra Pradesh",
+    "uttarakhand": "Uttarakhand",
+    "jalandhar": "Punjab",
+    "shibpur": "West Bengal", "howrah": "West Bengal",
+    "deoghar": "Jharkhand",
+    "malda": "West Bengal",
+    "kashmir": "Jammu and Kashmir",
+    "mesra": "Jharkhand",
+    "tezpur": "Assam",
+    "jorhat": "Assam",
+    "bhagalpur": "Bihar",
+    "muzaffarpur": "Bihar",
+    "gorakhpur": "Uttar Pradesh",
+    "jhansi": "Uttar Pradesh",
+    "agra": "Uttar Pradesh",
+    "aligarh": "Uttar Pradesh",
+    "pilani": "Rajasthan",
+    "ajmer": "Rajasthan",
+    "udaipur": "Rajasthan",
+    "bilaspur": "Chhattisgarh",
+    "aurangabad": "Maharashtra",
+    "nashik": "Maharashtra",
+    "panaji": "Goa",
+    "thanjavur": "Tamil Nadu",
+    "madurai": "Tamil Nadu",
+    "salem": "Tamil Nadu",
+    "vellore": "Tamil Nadu",
+    "mangalore": "Karnataka",
+    "mysore": "Karnataka", "mysuru": "Karnataka",
+    "hubli": "Karnataka", "hubballi": "Karnataka",
+    "gulbarga": "Karnataka", "kalaburagi": "Karnataka",
+    "vijayawada": "Andhra Pradesh",
+    "visakhapatnam": "Andhra Pradesh", "vizag": "Andhra Pradesh",
+    "guntur": "Andhra Pradesh",
+    "nellore": "Andhra Pradesh",
+    "kakinada": "Andhra Pradesh",
+    "anantapur": "Andhra Pradesh", "anantapuramu": "Andhra Pradesh",
+    "secunderabad": "Telangana",
+    "karimnagar": "Telangana",
+    "thrissur": "Kerala",
+    "kannur": "Kerala",
+    "idukki": "Kerala",
+}
+
+# Pre-build normalized exact map
+_NORMALIZED_MAP: dict[str, str] = {}
+for _k, _v in INSTITUTE_STATE_MAP.items():
+    _norm = re.sub(r"\s+", " ", _k.replace(",", "").strip())
+    _NORMALIZED_MAP[_norm] = _v
+
+
+def derive_state(institute: str) -> str | None:
+    """Derive state from institute name — checks exact map first, then city keywords."""
+    normalized = re.sub(r"\s+", " ", institute.strip())
+    state = INSTITUTE_STATE_MAP.get(normalized) or INSTITUTE_STATE_MAP.get(institute)
+    if state:
+        return state
+
+    stripped = re.sub(r"\s+", " ", normalized.replace(",", "").strip())
+    result = _NORMALIZED_MAP.get(stripped)
+    if result:
+        return result
+
+    name_lower = normalized.lower()
+    for city, st in _CITY_STATE_MAP.items():
+        if city in name_lower:
+            return st
+    return None

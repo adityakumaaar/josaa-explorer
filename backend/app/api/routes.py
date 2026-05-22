@@ -46,6 +46,8 @@ def search(req: SearchRequest, db: Session = Depends(get_db)):
         pwd=req.pwd,
         institute_types=req.institute_types,
         program_query=req.program_query,
+        branch_keywords=req.branch_keywords,
+        college_states=req.college_states,
         round_no=req.round_no,
         years=req.years,
         crl_rank=req.crl_rank,
@@ -54,11 +56,13 @@ def search(req: SearchRequest, db: Session = Depends(get_db)):
         SearchResult(
             institute=r["institute"],
             institute_type=r["institute_type"],
+            state=r.get("state"),
             program=r["program"],
             quota=r["quota"],
             seat_type=r["seat_type"],
             gender=r["gender"],
             confidence_score=r["confidence_score"],
+            latest_opening_rank=r.get("latest_opening_rank"),
             latest_closing_rank=r["latest_closing_rank"],
             year_eligibility={
                 yr: YearEligibility(**data)
@@ -134,6 +138,53 @@ def share_stats(db: Session = Depends(get_db)):
     total = db.query(func.sum(ShareLog.share_count)).scalar() or 0
     unique = db.query(func.count(ShareLog.id)).scalar() or 0
     return {"total_shares": total, "unique_searches_shared": unique}
+
+
+@router.get("/details")
+def details(
+    institute: str,
+    program: str,
+    seat_type: str,
+    gender: str,
+    quota: str | None = None,
+    db: Session = Depends(get_db),
+):
+    """Return closing ranks for all rounds/years for a specific institute+program+seat_type+gender+quota."""
+    query = (
+        db.query(ORCRRecord)
+        .filter(
+            ORCRRecord.institute == institute,
+            ORCRRecord.program == program,
+            ORCRRecord.seat_type == seat_type,
+            ORCRRecord.gender == gender,
+            ORCRRecord.is_preparatory == False,  # noqa: E712
+        )
+    )
+    if quota:
+        query = query.filter(ORCRRecord.quota == quota)
+    records = query.order_by(ORCRRecord.year, ORCRRecord.round).all()
+    # Build a dict: { round_no: { year: { opening_rank, closing_rank } } }
+    rounds_data: dict[int, dict[int, dict]] = {}
+    years_set: set[int] = set()
+    for rec in records:
+        years_set.add(rec.year)
+        if rec.round not in rounds_data:
+            rounds_data[rec.round] = {}
+        rounds_data[rec.round][rec.year] = {
+            "opening_rank": rec.opening_rank,
+            "closing_rank": rec.closing_rank,
+        }
+    return {
+        "institute": institute,
+        "program": program,
+        "seat_type": seat_type,
+        "gender": gender,
+        "years": sorted(years_set),
+        "rounds": {
+            r: {str(y): data for y, data in year_map.items()}
+            for r, year_map in sorted(rounds_data.items())
+        },
+    }
 
 
 @router.get("/institutes")

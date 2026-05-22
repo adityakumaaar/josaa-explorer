@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Scrape strategy for Railway deploy:
 - All rounds for 2022-2025 (last 4 years)
-- Last round only for 2019-2021
+- Last round only for 2021
 """
 
 import concurrent.futures
@@ -16,7 +16,7 @@ from run_scraper import store_records
 from sqlalchemy import func
 
 ALL_ROUNDS_YEARS = [2022, 2023, 2024]
-LAST_ROUND_YEARS = [2019, 2020, 2021]
+LAST_ROUND_YEARS = [2021]
 CURRENT_YEAR = 2025
 MAX_WORKERS = 5
 MAX_RETRIES = 3

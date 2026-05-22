@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from "react";
-import { CATEGORIES, INDIAN_STATES, INSTITUTE_TYPES } from "../lib/constants";
+import { createPortal } from "react-dom";
+import { CATEGORIES, INDIAN_STATES, INSTITUTE_TYPES, BRANCH_TYPES } from "../lib/constants";
 import type { SearchParams } from "../lib/types";
 
 const ROUNDS = [1, 2, 3, 4, 5, 6, 7];
-const YEARS = [2025, 2024, 2023, 2022, 2021, 2020, 2019];
+const YEARS = [2025, 2024, 2023, 2022, 2021];
 
 interface Props {
   onSearch: (params: SearchParams) => void;
@@ -26,10 +27,17 @@ export default function SearchForm({ onSearch, loading, initialParams }: Props) 
   const [stateFilter, setStateFilter] = useState("");
   const stateRef = useRef<HTMLDivElement>(null);
 
+  const [selectedBranches, setSelectedBranches] = useState<string[]>([]);
+  const [branchSearch, setBranchSearch] = useState("");
+
+  const [selectedCollegeStates, setSelectedCollegeStates] = useState<string[]>([]);
+  const [collegeStateSearch, setCollegeStateSearch] = useState("");
+
   const [allPrograms, setAllPrograms] = useState<string[]>([]);
   const [progOpen, setProgOpen] = useState(false);
   const [progFilter, setProgFilter] = useState("");
-  const progRef = useRef<HTMLDivElement>(null);
+  const progInputRef = useRef<HTMLInputElement>(null);
+  const [progRect, setProgRect] = useState<DOMRect | null>(null);
 
   useEffect(() => {
     const url =
@@ -45,6 +53,13 @@ export default function SearchForm({ onSearch, loading, initialParams }: Props) 
   const filteredPrograms = allPrograms.filter((p) =>
     p.toLowerCase().includes(progFilter.toLowerCase())
   );
+
+  const openProgDropdown = () => {
+    if (progInputRef.current) {
+      setProgRect(progInputRef.current.getBoundingClientRect());
+    }
+    setProgOpen(true);
+  };
 
   const filteredStates = INDIAN_STATES.filter((s) =>
     s.toLowerCase().includes(stateFilter.toLowerCase())
@@ -62,9 +77,32 @@ export default function SearchForm({ onSearch, loading, initialParams }: Props) 
     );
   };
 
+  const toggleBranch = (label: string) => {
+    setSelectedBranches((prev) =>
+      prev.includes(label) ? prev.filter((x) => x !== label) : [...prev, label]
+    );
+  };
+
+  const filteredBranchTypes = BRANCH_TYPES.filter((b) =>
+    b.label.toLowerCase().includes(branchSearch.toLowerCase())
+  );
+
+  const filteredCollegeStates = INDIAN_STATES.filter((s) =>
+    s.toLowerCase().includes(collegeStateSearch.toLowerCase())
+  );
+
+  const toggleCollegeState = (state: string) => {
+    setSelectedCollegeStates((prev) =>
+      prev.includes(state) ? prev.filter((x) => x !== state) : [...prev, state]
+    );
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!rank || !homeState) return;
+    const branchKeywords = selectedBranches.length > 0
+      ? BRANCH_TYPES.filter((b) => selectedBranches.includes(b.label)).flatMap((b) => b.keywords)
+      : undefined;
     onSearch({
       rank: parseInt(rank, 10),
       crl_rank: category !== "General" && crlRank ? parseInt(crlRank, 10) : undefined,
@@ -74,6 +112,8 @@ export default function SearchForm({ onSearch, loading, initialParams }: Props) 
       pwd,
       institute_types: instTypes.length > 0 ? instTypes : undefined,
       program_query: programQuery || undefined,
+      branch_keywords: branchKeywords,
+      college_states: selectedCollegeStates.length > 0 ? selectedCollegeStates : undefined,
       round_no: roundNo ? roundNo : undefined,
       years: selectedYears.length > 0 ? selectedYears : undefined,
     });
@@ -325,23 +365,108 @@ export default function SearchForm({ onSearch, loading, initialParams }: Props) 
         </div>
       </div>
 
-      {/* Program dropdown */}
-      <div ref={progRef} className="relative">
+      {/* Branch Types */}
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1.5">
+          Branch Types
+          <span className="text-gray-400 font-normal ml-1">(optional)</span>
+        </label>
+        <input
+          type="text"
+          value={branchSearch}
+          onChange={(e) => setBranchSearch(e.target.value)}
+          placeholder="Search branch types..."
+          className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-xs mb-2
+                     focus:border-blue-500 focus:ring-2 focus:ring-blue-200
+                     outline-none transition"
+        />
+        <div className="max-h-36 overflow-y-auto space-y-1">
+          {filteredBranchTypes.map((b) => (
+            <label key={b.label} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 px-1 py-0.5 rounded">
+              <input
+                type="checkbox"
+                checked={selectedBranches.includes(b.label)}
+                onChange={() => toggleBranch(b.label)}
+                className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <span className="text-xs text-gray-700">{b.label}</span>
+            </label>
+          ))}
+          {filteredBranchTypes.length === 0 && (
+            <p className="text-[11px] text-gray-400 px-1">No matching branch types</p>
+          )}
+        </div>
+        {selectedBranches.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setSelectedBranches([])}
+            className="mt-1.5 text-[11px] text-blue-600 hover:underline"
+          >
+            Clear branch filters
+          </button>
+        )}
+      </div>
+
+      {/* College State filter */}
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1.5">
+          College State
+          <span className="text-gray-400 font-normal ml-1">(optional)</span>
+        </label>
+        <input
+          type="text"
+          value={collegeStateSearch}
+          onChange={(e) => setCollegeStateSearch(e.target.value)}
+          placeholder="Search states..."
+          className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-xs mb-2
+                     focus:border-blue-500 focus:ring-2 focus:ring-blue-200
+                     outline-none transition"
+        />
+        <div className="max-h-36 overflow-y-auto space-y-1">
+          {filteredCollegeStates.map((s) => (
+            <label key={s} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 px-1 py-0.5 rounded">
+              <input
+                type="checkbox"
+                checked={selectedCollegeStates.includes(s)}
+                onChange={() => toggleCollegeState(s)}
+                className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <span className="text-xs text-gray-700">{s}</span>
+            </label>
+          ))}
+          {filteredCollegeStates.length === 0 && (
+            <p className="text-[11px] text-gray-400 px-1">No matching states</p>
+          )}
+        </div>
+        {selectedCollegeStates.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setSelectedCollegeStates([])}
+            className="mt-1.5 text-[11px] text-blue-600 hover:underline"
+          >
+            Clear state filters ({selectedCollegeStates.length} selected)
+          </button>
+        )}
+      </div>
+
+      {/* Program selector */}
+      <div>
         <label className="block text-xs font-medium text-gray-600 mb-1">
           Program
           <span className="text-gray-400 font-normal ml-1">(optional)</span>
         </label>
         <div className="relative">
           <input
+            ref={progInputRef}
             type="text"
             value={progOpen ? progFilter : programQuery}
             onChange={(e) => {
               setProgFilter(e.target.value);
-              if (!progOpen) setProgOpen(true);
+              if (!progOpen) openProgDropdown();
             }}
             onFocus={() => {
-              setProgOpen(true);
               setProgFilter(programQuery);
+              openProgDropdown();
             }}
             onBlur={() => setTimeout(() => setProgOpen(false), 150)}
             placeholder="Search programs..."
@@ -365,34 +490,39 @@ export default function SearchForm({ onSearch, loading, initialParams }: Props) 
             </button>
           )}
         </div>
-        {progOpen && (
-          <ul className="absolute z-20 mt-1 w-full max-h-48 overflow-auto rounded-lg border
-                         border-gray-200 bg-white shadow-lg">
-            {filteredPrograms.slice(0, 100).map((p) => (
-              <li
-                key={p}
-                onMouseDown={() => {
-                  setProgramQuery(p);
-                  setProgFilter("");
-                  setProgOpen(false);
-                }}
-                className={`px-3 py-1.5 cursor-pointer text-sm hover:bg-blue-50
-                  ${programQuery === p ? "bg-blue-50 font-medium" : ""}`}
-              >
-                {p}
-              </li>
-            ))}
-            {filteredPrograms.length === 0 && (
-              <li className="px-3 py-1.5 text-sm text-gray-400">No matching program</li>
-            )}
-            {filteredPrograms.length > 100 && (
-              <li className="px-3 py-1.5 text-[11px] text-gray-400 text-center">
-                Type more to narrow down ({filteredPrograms.length} total)
-              </li>
-            )}
-          </ul>
-        )}
       </div>
+      {progOpen && filteredPrograms.length > 0 && progRect && createPortal(
+        <ul
+          style={{
+            position: "fixed",
+            top: progRect.bottom + 4,
+            left: progRect.left,
+            width: progRect.width,
+            zIndex: 9999,
+          }}
+          className="max-h-48 overflow-auto rounded-lg border border-gray-200 bg-white shadow-xl"
+        >
+          {filteredPrograms.slice(0, 100).map((p) => (
+            <li
+              key={p}
+              onMouseDown={() => {
+                setProgramQuery(p);
+                setProgFilter("");
+                setProgOpen(false);
+              }}
+              className="px-3 py-1.5 cursor-pointer text-sm hover:bg-blue-50"
+            >
+              {p}
+            </li>
+          ))}
+          {filteredPrograms.length > 100 && (
+            <li className="px-3 py-1.5 text-[11px] text-gray-400 text-center border-t">
+              Type more to narrow down ({filteredPrograms.length} total)
+            </li>
+          )}
+        </ul>,
+        document.body
+      )}
 
       {/* Submit */}
       <button
