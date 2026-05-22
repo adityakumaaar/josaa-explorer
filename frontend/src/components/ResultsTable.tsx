@@ -58,8 +58,8 @@ export default function ResultsTable({ data }: Props) {
   return (
     <div>
       {/* Top bar: counts + sort + type filter */}
-      <div className="flex flex-wrap items-center gap-3 mb-4">
-        <div className="text-sm text-gray-500 mr-auto">
+      <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
+        <div className="text-xs sm:text-sm text-gray-500 mr-auto">
           <span className="font-semibold text-gray-800">{filtered.length}</span>{" "}
           options for rank{" "}
           <span className="font-semibold text-gray-800">
@@ -69,7 +69,7 @@ export default function ResultsTable({ data }: Props) {
         </div>
 
         {/* Sort */}
-        <div className="flex items-center gap-1 text-xs">
+        <div className="flex items-center gap-1 text-[11px] sm:text-xs">
           {(
             [
               ["match", "Best match"],

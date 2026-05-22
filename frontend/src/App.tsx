@@ -7,7 +7,7 @@ import type { SearchParams } from "./lib/types";
 
 function App() {
   const { data, loading, error, search } = useSearch();
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 1024);
   const [copied, setCopied] = useState(false);
   const [lastParams, setLastParams] = useState<SearchParams | null>(null);
   const initialParams = useRef(decodeSearchParams(window.location.search));
@@ -19,6 +19,7 @@ function App() {
       const qs = encodeSearchParams(params);
       window.history.replaceState(null, "", `?${qs}`);
       search(params);
+      if (window.innerWidth < 1024) setSidebarOpen(false);
     },
     [search],
   );
@@ -56,13 +57,13 @@ function App() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 shrink-0">
-        <div className="px-6 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-gray-900 tracking-tight">
+      <header className="bg-white border-b border-gray-200 shrink-0 z-40 relative">
+        <div className="px-3 sm:px-6 py-3 sm:py-4 flex items-center justify-between">
+          <div className="min-w-0">
+            <h1 className="text-lg sm:text-xl font-bold text-gray-900 tracking-tight">
               JoSAA Explorer
             </h1>
-            <p className="text-xs text-gray-500 mt-0.5">
+            <p className="text-[11px] sm:text-xs text-gray-500 mt-0.5 hidden sm:block">
               Find your best college based on JoSAA opening &amp; closing ranks
               (2019–2025)
             </p>
@@ -92,10 +93,11 @@ function App() {
                 )}
               </button>
             )}
-            {/* Mobile toggle */}
+            {/* Sidebar toggle */}
             <button
               onClick={() => setSidebarOpen((v) => !v)}
-              className="lg:hidden p-2 rounded-lg border border-gray-300 text-gray-600"
+              className="p-2 rounded-lg border border-gray-300 text-gray-600 lg:hidden"
+              aria-label="Toggle filters"
             >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75" />
@@ -106,18 +108,26 @@ function App() {
       </header>
 
       {/* Main: sidebar + content */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden relative">
+        {/* Mobile backdrop */}
+        {sidebarOpen && (
+          <div
+            className="fixed inset-0 bg-black/30 z-20 lg:hidden"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+
         {/* Sidebar */}
         <aside
           className={`
-            bg-white border-r border-gray-200 w-80 shrink-0 overflow-y-auto
-            transition-all duration-200
-            ${sidebarOpen ? "translate-x-0" : "-translate-x-full absolute lg:translate-x-0 lg:relative"}
-            lg:translate-x-0 lg:relative
-            z-10
+            bg-white border-r border-gray-200 w-80 max-w-[85vw] shrink-0 overflow-y-auto
+            transition-transform duration-200
+            fixed top-0 left-0 h-full z-30 pt-[61px]
+            lg:relative lg:pt-0 lg:z-10 lg:translate-x-0
+            ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
           `}
         >
-          <div className="p-5">
+          <div className="p-4 lg:p-5">
             <SearchForm
               onSearch={handleSearch}
               loading={loading}
@@ -127,7 +137,7 @@ function App() {
         </aside>
 
         {/* Results area */}
-        <main className="flex-1 overflow-y-auto p-6">
+        <main className="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6">
           {/* Error */}
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 mb-6 text-sm">
