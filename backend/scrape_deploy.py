@@ -15,8 +15,8 @@ from app.scraper.fetch_current import (
 from run_scraper import store_records
 from sqlalchemy import func
 
-ALL_ROUNDS_YEARS = [2022, 2023, 2024]
-LAST_ROUND_YEARS = [2021]
+ALL_ROUNDS_YEARS = [2021, 2022, 2023, 2024]
+LAST_ROUND_YEARS = []
 CURRENT_YEAR = 2025
 MAX_WORKERS = 5
 MAX_RETRIES = 3

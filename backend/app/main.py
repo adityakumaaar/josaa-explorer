@@ -11,9 +11,13 @@ from .models.database import init_db
 
 app = FastAPI(title="JoSAA Explorer API", version="0.1.0")
 
+CORS_ORIGINS = os.environ.get(
+    "CORS_ORIGINS", "http://localhost:5173"
+).split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=CORS_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -55,16 +59,30 @@ def _migrate_add_state_column():
 
 
 def _cleanup_old_years():
-    """Remove 2019 and 2020 data — no longer used."""
-    from .models.database import SessionLocal, ORCRRecord
+    """Remove 2019 and 2020 data — no longer used. Only runs if records exist."""
+    from .models.database import SessionLocal, ORCRRecord, engine
     db = SessionLocal()
     try:
+        count = db.query(ORCRRecord).filter(ORCRRecord.year.in_([2019, 2020])).count()
+        if count == 0:
+            return
         deleted = db.query(ORCRRecord).filter(ORCRRecord.year.in_([2019, 2020])).delete(synchronize_session=False)
-        if deleted:
-            db.commit()
-            print(f"Cleaned up {deleted} records from 2019/2020")
+        db.commit()
+        print(f"Cleaned up {deleted} records from 2019/2020")
+    except Exception as e:
+        print(f"Cleanup note: {e}")
+        db.rollback()
     finally:
         db.close()
+
+    # VACUUM must run outside a transaction (autocommit mode)
+    try:
+        from sqlalchemy import text
+        with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+            conn.execute(text("VACUUM orcr_records"))
+            print("Vacuumed orcr_records after cleanup")
+    except Exception as e:
+        print(f"Vacuum skipped: {e}")
 
 
 def _backfill_states():

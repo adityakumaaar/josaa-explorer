@@ -3,6 +3,7 @@ import SearchForm from "./components/SearchForm";
 import ResultsTable from "./components/ResultsTable";
 import { useSearch } from "./hooks/useSearch";
 import { encodeSearchParams, decodeSearchParams } from "./lib/urlParams";
+import { API_BASE } from "./lib/api";
 import type { SearchParams } from "./lib/types";
 
 function App() {
@@ -41,7 +42,7 @@ function App() {
     } catch {
       prompt("Copy this link:", url);
     }
-    fetch("/api/share", {
+    fetch(`${API_BASE}/api/share`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

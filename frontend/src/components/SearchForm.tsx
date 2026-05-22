@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { CATEGORIES, INDIAN_STATES, INSTITUTE_TYPES, BRANCH_TYPES } from "../lib/constants";
+import { API_BASE } from "../lib/api";
 import type { SearchParams } from "../lib/types";
 
 const ROUNDS = [1, 2, 3, 4, 5, 6, 7];
@@ -42,8 +43,8 @@ export default function SearchForm({ onSearch, loading, initialParams }: Props) 
   useEffect(() => {
     const url =
       instTypes.length > 0
-        ? `/api/programs?institute_types=${encodeURIComponent(instTypes.join(","))}`
-        : "/api/programs";
+        ? `${API_BASE}/api/programs?institute_types=${encodeURIComponent(instTypes.join(","))}`
+        : `${API_BASE}/api/programs`;
     fetch(url)
       .then((r) => r.json())
       .then((data: string[]) => setAllPrograms(data))

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { INST_TYPE_COLORS } from "../lib/constants";
+import { API_BASE } from "../lib/api";
 import type { SearchResult } from "../lib/types";
 
 interface Props {
@@ -60,7 +61,7 @@ export default function CollegeCard({ result, allYears, rank, compact = false }:
         gender: result.gender,
         quota: result.quota,
       });
-      const resp = await fetch(`/api/details?${params}`);
+      const resp = await fetch(`${API_BASE}/api/details?${params}`);
       if (resp.ok) {
         const data = await resp.json();
         setDetail(data);

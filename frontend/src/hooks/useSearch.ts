@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import type { SearchParams, SearchResponse } from "../lib/types";
+import { API_BASE } from "../lib/api";
 
 export function useSearch() {
   const [data, setData] = useState<SearchResponse | null>(null);
@@ -10,7 +11,7 @@ export function useSearch() {
     setLoading(true);
     setError(null);
     try {
-      const resp = await fetch("/api/search", {
+      const resp = await fetch(`${API_BASE}/api/search`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(params),
