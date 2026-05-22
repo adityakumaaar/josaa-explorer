@@ -39,10 +39,11 @@ if STATIC_DIR.is_dir():
 
 @app.on_event("startup")
 def on_startup():
+    import threading
     init_db()
     _migrate_add_state_column()
     _cleanup_old_years()
-    _backfill_states()
+    threading.Thread(target=_backfill_states, daemon=True).start()
 
 
 def _migrate_add_state_column():
