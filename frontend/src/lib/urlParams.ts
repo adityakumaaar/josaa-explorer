@@ -1,0 +1,48 @@
+import type { SearchParams } from "./types";
+
+export function encodeSearchParams(params: SearchParams): string {
+  const p = new URLSearchParams();
+  p.set("rank", String(params.rank));
+  p.set("cat", params.category);
+  p.set("gen", params.gender);
+  p.set("state", params.home_state);
+  if (params.pwd) p.set("pwd", "1");
+  if (params.round_no) p.set("round", String(params.round_no));
+  if (params.years?.length) p.set("years", params.years.join(","));
+  if (params.institute_types?.length)
+    p.set("types", params.institute_types.join(","));
+  if (params.program_query) p.set("prog", params.program_query);
+  return p.toString();
+}
+
+export function decodeSearchParams(search: string): SearchParams | null {
+  const p = new URLSearchParams(search);
+  const rank = p.get("rank");
+  const category = p.get("cat");
+  const gender = p.get("gen");
+  const homeState = p.get("state");
+
+  if (!rank || !category || !gender || !homeState) return null;
+
+  const parsed: SearchParams = {
+    rank: parseInt(rank, 10),
+    category,
+    gender,
+    home_state: homeState,
+    pwd: p.get("pwd") === "1",
+  };
+
+  const round = p.get("round");
+  if (round) parsed.round_no = parseInt(round, 10);
+
+  const years = p.get("years");
+  if (years) parsed.years = years.split(",").map(Number);
+
+  const types = p.get("types");
+  if (types) parsed.institute_types = types.split(",");
+
+  const prog = p.get("prog");
+  if (prog) parsed.program_query = prog;
+
+  return parsed;
+}
