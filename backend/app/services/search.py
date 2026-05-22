@@ -91,11 +91,13 @@ def search_colleges(
     max_rounds = dict(year_query.all())
     all_years_sorted = sorted(max_rounds.keys())
 
-    # Fetch ALL rounds for each year (needed for round-based scoring)
+    # Only fetch records where user could be eligible (biggest perf win)
+    min_rank = min(rank, crl_rank) if crl_rank else rank
     query = db.query(ORCRRecord).filter(
         ORCRRecord.seat_type.in_(seat_types),
         ORCRRecord.gender.in_(gender_filter),
         ORCRRecord.is_preparatory == False,  # noqa: E712
+        ORCRRecord.closing_rank >= min_rank,
     )
     if institute_types:
         query = query.filter(ORCRRecord.institute_type.in_(institute_types))

@@ -15,7 +15,13 @@ DATABASE_URL = os.environ.get("DATABASE_URL", f"sqlite:///{DB_PATH}")
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-engine = create_engine(DATABASE_URL, echo=False)
+engine = create_engine(
+    DATABASE_URL,
+    echo=False,
+    pool_size=5,
+    max_overflow=10,
+    pool_pre_ping=True,
+)
 SessionLocal = sessionmaker(bind=engine)
 Base = declarative_base()
 
@@ -40,6 +46,7 @@ class ORCRRecord(Base):
     __table_args__ = (
         Index("ix_search", "year", "seat_type", "gender", "closing_rank"),
         Index("ix_institute_program", "institute", "program"),
+        Index("ix_closing_rank_filter", "closing_rank", "seat_type", "gender", "is_preparatory"),
     )
 
 
