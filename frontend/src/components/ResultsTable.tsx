@@ -1,6 +1,7 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import CollegeCard from "./CollegeCard";
 import { INSTITUTE_TYPES, INST_TYPE_COLORS } from "../lib/constants";
+import { API_BASE } from "../lib/api";
 import type { SearchResponse, SearchResult } from "../lib/types";
 
 type SortKey = "match" | "closing" | "name";
@@ -242,10 +243,47 @@ function getConfidence(score: number) {
   return { label: "LOW", color: "text-red-500" };
 }
 
+interface SentimentCategory {
+  category: string;
+  sentiment: "positive" | "neutral" | "negative";
+  score: number;
+  snippet: string;
+  post_count: number;
+}
+
+interface SentimentData {
+  available: boolean;
+  categories: SentimentCategory[];
+}
+
+const CATEGORY_META: Record<string, { label: string; icon: string }> = {
+  placements: { label: "Placements", icon: "💼" },
+  campus_life: { label: "Campus Life", icon: "🎉" },
+  faculty: { label: "Faculty", icon: "👨‍🏫" },
+  infrastructure: { label: "Infrastructure", icon: "🏗️" },
+};
+
+function getSentimentStyle(sentiment: string) {
+  if (sentiment === "positive") return "bg-emerald-50 text-emerald-700 border-emerald-200";
+  if (sentiment === "negative") return "bg-red-50 text-red-700 border-red-200";
+  return "bg-gray-50 text-gray-600 border-gray-200";
+}
+
 function CollegeGroupCard({ group, allYears, rank }: { group: CollegeGroup; allYears: string[]; rank: number }) {
   const [expanded, setExpanded] = useState(true);
+  const [sentiment, setSentiment] = useState<SentimentData | null>(null);
   const typeColor = INST_TYPE_COLORS[group.institute_type] || "bg-gray-100 text-gray-800";
   const confidence = getConfidence(group.bestScore);
+
+  useEffect(() => {
+    if (expanded && !sentiment) {
+      const params = new URLSearchParams({ institute: group.institute });
+      fetch(`${API_BASE}/api/sentiment?${params}`)
+        .then((r) => r.ok ? r.json() : null)
+        .then((data) => { if (data) setSentiment(data); })
+        .catch(() => {});
+    }
+  }, [expanded, group.institute, sentiment]);
 
   return (
     <div className="border border-gray-200 rounded-lg bg-white overflow-hidden">
@@ -274,7 +312,12 @@ function CollegeGroupCard({ group, allYears, rank }: { group: CollegeGroup; allY
           </p>
         </div>
         <div className="shrink-0 text-right mr-2">
-          <span className={`text-xs font-bold ${confidence.color}`}>{confidence.label}</span>
+          <div className="flex items-center justify-end gap-1">
+            {sentiment?.available && sentiment.categories.length > 0 && (
+              <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" title="Reddit sentiment available" />
+            )}
+            <span className={`text-xs font-bold ${confidence.color}`}>{confidence.label}</span>
+          </div>
         </div>
         <svg
           className={`w-4 h-4 text-gray-400 shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`}
@@ -285,10 +328,44 @@ function CollegeGroupCard({ group, allYears, rank }: { group: CollegeGroup; allY
       </button>
 
       {expanded && (
-        <div className="border-t border-gray-100 px-2 pb-2 pt-1 space-y-1.5">
-          {group.results.map((r, i) => (
-            <CollegeCard key={i} result={r} allYears={allYears} rank={rank} compact />
-          ))}
+        <div className="border-t border-gray-100">
+          {/* Sentiment at college level */}
+          {sentiment?.available && sentiment.categories.length > 0 && (
+            <div className="px-3 py-2 border-b border-gray-100 bg-gray-50/50">
+              <p className="text-[10px] font-semibold text-gray-500 mb-1.5 flex items-center gap-1">
+                <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 0C5.373 0 0 4.373 0 9.757c0 3.268 1.882 6.173 4.83 7.945-.046 1.18-.48 3.225-2.33 4.298 2.726-.2 4.946-1.408 6.227-2.388.83.12 1.68.182 2.547.182h.453C17.627 19.794 24 15.42 24 9.757 24 4.373 18.627 0 12 0z"/>
+                </svg>
+                Reddit Sentiment
+              </p>
+              <div className="grid grid-cols-4 gap-1.5">
+                {sentiment.categories.map((cat) => {
+                  const meta = CATEGORY_META[cat.category] || { label: cat.category, icon: "📊" };
+                  const style = getSentimentStyle(cat.sentiment);
+                  return (
+                    <div key={cat.category} className={`rounded border px-2 py-1.5 ${style}`}>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-semibold">{meta.icon} {meta.label}</span>
+                        <span className="text-[9px] font-bold">{cat.score}/5</span>
+                      </div>
+                      {cat.snippet && (
+                        <p className="text-[9px] italic leading-tight opacity-75 mt-0.5 line-clamp-1">
+                          "{cat.snippet}"
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Branch cards */}
+          <div className="px-2 pb-2 pt-1 space-y-1.5">
+            {group.results.map((r, i) => (
+              <CollegeCard key={i} result={r} allYears={allYears} rank={rank} compact />
+            ))}
+          </div>
         </div>
       )}
     </div>

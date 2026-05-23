@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { INST_TYPE_COLORS } from "../lib/constants";
 import { API_BASE } from "../lib/api";
 import type { SearchResult } from "../lib/types";
@@ -63,6 +63,7 @@ export default function CollegeCard({ result, allYears, rank, compact = false }:
   const [detail, setDetail] = useState<DetailData | null>(null);
   const [sentiment, setSentiment] = useState<SentimentData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [hasSentiment, setHasSentiment] = useState<boolean | null>(null);
 
   const confidence = getConfidence(result.confidence_score);
   const typeColor =
@@ -70,6 +71,22 @@ export default function CollegeCard({ result, allYears, rank, compact = false }:
   const eligibleCount = allYears.filter(
     (yr) => result.year_eligibility[yr]?.eligible
   ).length;
+
+  useEffect(() => {
+    if (hasSentiment !== null) return;
+    const params = new URLSearchParams({ institute: result.institute });
+    fetch(`${API_BASE}/api/sentiment?${params}`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (data) {
+          setHasSentiment(data.available && data.categories?.length > 0);
+          setSentiment(data);
+        } else {
+          setHasSentiment(false);
+        }
+      })
+      .catch(() => setHasSentiment(false));
+  }, [result.institute, hasSentiment]);
 
   const handleClick = async () => {
     if (expanded) {
@@ -99,14 +116,6 @@ export default function CollegeCard({ result, allYears, rank, compact = false }:
       setLoading(false);
     }
 
-    // Fetch sentiment in parallel (non-blocking)
-    if (!sentiment) {
-      const sentimentParams = new URLSearchParams({ institute: result.institute });
-      fetch(`${API_BASE}/api/sentiment?${sentimentParams}`)
-        .then((r) => r.ok ? r.json() : null)
-        .then((data) => { if (data) setSentiment(data); })
-        .catch(() => {});
-    }
   };
 
   // Sort years descending (latest first) for the detail table
@@ -171,7 +180,12 @@ export default function CollegeCard({ result, allYears, rank, compact = false }:
             </div>
           </div>
           <div className="shrink-0 text-right">
-            <span className={`text-xs font-bold ${confidence.color}`}>{confidence.label}</span>
+            <div className="flex items-center justify-end gap-1">
+              {hasSentiment && (
+                <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" title="Reddit sentiment available" />
+              )}
+              <span className={`text-xs font-bold ${confidence.color}`}>{confidence.label}</span>
+            </div>
             <p className="text-[10px] text-gray-400 mt-0.5">{eligibleCount}/{allYears.length} yrs</p>
           </div>
         </div>

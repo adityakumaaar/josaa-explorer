@@ -56,9 +56,27 @@ GEMINI_DELAY = 4.5  # seconds between Gemini calls (15 RPM free tier)
 SENTINEL = None  # signals end of queue
 
 
-def scrape_and_store(institute: str, program: str | None = None) -> int:
+def clear_institute_data(institute: str):
+    """Delete all existing posts and sentiment for a college (for refresh)."""
+    db = SessionLocal()
+    try:
+        db.query(RedditPost).filter_by(institute=institute).delete()
+        db.query(CollegeSentiment).filter_by(institute=institute).delete()
+        db.commit()
+    except Exception as e:
+        print(f"    Error clearing data for {institute}: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+
+def scrape_and_store(institute: str, program: str | None = None, refresh: bool = False) -> int:
     """Scrape Reddit posts for a college and store in DB. Returns count stored."""
     print(f"  [SCRAPE] {institute}" + (f" [{program}]" if program else ""))
+
+    if refresh:
+        clear_institute_data(institute)
+
     posts = scrape_college_posts(institute, program=program, max_posts=40)
 
     if not posts:
@@ -175,10 +193,10 @@ def get_already_analyzed() -> set[str]:
         db.close()
 
 
-def _scraper_worker(institutes: list[str], work_queue: queue.Queue):
+def _scraper_worker(institutes: list[str], work_queue: queue.Queue, refresh: bool = False):
     """Worker thread: scrapes Reddit for each college, puts institute on queue when done."""
     for institute in institutes:
-        scrape_and_store(institute)
+        scrape_and_store(institute, refresh=refresh)
         work_queue.put(institute)
     work_queue.put(SENTINEL)
 
@@ -202,7 +220,7 @@ def _analyzer_worker(work_queue: queue.Queue, results: dict):
             results["analyzed"] += 1
 
 
-def run_pipeline(institutes: list[str]):
+def run_pipeline(institutes: list[str], refresh: bool = False):
     """Run scraping and analysis concurrently in a producer-consumer pipeline."""
     work_queue: queue.Queue = queue.Queue(maxsize=3)
     results = {"analyzed": 0}
@@ -212,9 +230,8 @@ def run_pipeline(institutes: list[str]):
     )
     analyzer_thread.start()
 
-    # Scraper runs on main thread (or could be another thread)
     scraper_thread = threading.Thread(
-        target=_scraper_worker, args=(institutes, work_queue), daemon=True
+        target=_scraper_worker, args=(institutes, work_queue, refresh), daemon=True
     )
     scraper_thread.start()
 
@@ -232,6 +249,7 @@ def main():
     parser.add_argument("--limit", type=int, help="Limit number of colleges to process")
     parser.add_argument("--all-colleges", action="store_true", help="Process all colleges from DB")
     parser.add_argument("--skip-existing", action="store_true", help="Skip colleges already analyzed")
+    parser.add_argument("--refresh", action="store_true", help="Delete old data and re-scrape/analyze fresh (last 1 year only)")
     args = parser.parse_args()
 
     init_db()
@@ -257,11 +275,14 @@ def main():
         print("Nothing to do!")
         return
 
+    if args.refresh:
+        print("REFRESH mode: will delete old data and re-scrape (last 1 year posts only)\n")
+
     if args.scrape_only:
         # Sequential scrape only (Reddit rate limited anyway)
         for i, institute in enumerate(institutes, 1):
             print(f"\n[{i}/{len(institutes)}] {institute}")
-            scrape_and_store(institute)
+            scrape_and_store(institute, refresh=args.refresh)
         print(f"\n{'=' * 50}\nScraping complete!")
 
     elif args.analyze_only:
@@ -277,7 +298,7 @@ def main():
     else:
         # Pipeline: scrape and analyze concurrently
         print("Running in PIPELINE mode (scrape + analyze concurrently)\n")
-        analyzed = run_pipeline(institutes)
+        analyzed = run_pipeline(institutes, refresh=args.refresh)
         print(f"\n{'=' * 50}\nPipeline complete! Analyzed {analyzed} colleges")
 
     print(f"Finished at {datetime.now(timezone.utc).isoformat()}")

@@ -6,9 +6,11 @@ Rate-limited to ~40 req/min (1.5s between requests).
 
 import json
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 import requests
+
+ONE_YEAR_AGO_UTC = (datetime.now(timezone.utc) - timedelta(days=365)).timestamp()
 
 USER_AGENT = "JoSAA-Explorer/1.0 (educational project; reddit sentiment scraper)"
 BASE = "https://old.reddit.com"
@@ -145,7 +147,7 @@ def _throttled_get(url: str, params: dict | None = None) -> dict | None:
 
 
 def _extract_posts(data: dict) -> list[dict]:
-    """Extract posts from Reddit listing JSON response."""
+    """Extract posts from Reddit listing JSON response. Only includes posts from the last year."""
     posts = []
     if not data or "data" not in data:
         return posts
@@ -156,6 +158,9 @@ def _extract_posts(data: dict) -> list[dict]:
         post = child["data"]
         if post.get("removed_by_category") or post.get("is_robot_indexable") is False:
             continue
+        created = post.get("created_utc", 0)
+        if created < ONE_YEAR_AGO_UTC:
+            continue
         posts.append({
             "post_id": post["id"],
             "title": post.get("title", ""),
@@ -163,7 +168,7 @@ def _extract_posts(data: dict) -> list[dict]:
             "score": post.get("score", 0),
             "subreddit": post.get("subreddit", ""),
             "permalink": post.get("permalink", ""),
-            "created_utc": post.get("created_utc", 0),
+            "created_utc": created,
             "num_comments": post.get("num_comments", 0),
         })
     return posts
@@ -195,12 +200,13 @@ def scrape_subreddit_top(subreddit: str, time_filter: str = "all", limit: int = 
 
 
 def search_subreddit(subreddit: str, query: str, limit: int = 25) -> list[dict]:
-    """Search within a specific subreddit."""
+    """Search within a specific subreddit (last year only)."""
     url = f"{BASE}/r/{subreddit}/search.json"
     params = {
         "q": query,
         "restrict_sr": "on",
         "sort": "relevance",
+        "t": "year",
         "limit": min(limit, 100),
     }
     data = _throttled_get(url, params=params)
@@ -208,11 +214,11 @@ def search_subreddit(subreddit: str, query: str, limit: int = 25) -> list[dict]:
 
 
 def search_reddit(query: str, subreddit: str | None = None, limit: int = 25) -> list[dict]:
-    """Search Reddit globally or within a subreddit."""
+    """Search Reddit globally or within a subreddit (last year only)."""
     if subreddit:
         return search_subreddit(subreddit, query, limit)
     url = f"{BASE}/search.json"
-    params = {"q": query, "sort": "relevance", "limit": min(limit, 100)}
+    params = {"q": query, "sort": "relevance", "t": "year", "limit": min(limit, 100)}
     data = _throttled_get(url, params=params)
     return _extract_posts(data) if data else []
 
@@ -234,8 +240,8 @@ def scrape_college_posts(
     # Tier 1: College-specific subreddit
     sub = INSTITUTE_SUBREDDITS.get(institute)
     if sub:
-        # Get top posts from the college subreddit
-        posts = scrape_subreddit_top(sub, time_filter="all", limit=30)
+        # Get top posts from the college subreddit (last year only)
+        posts = scrape_subreddit_top(sub, time_filter="year", limit=30)
         for p in posts:
             all_posts[p["post_id"]] = p
 
