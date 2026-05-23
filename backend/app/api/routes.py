@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import func, distinct
 
-from ..models.database import CollegeSentiment, ORCRRecord, ShareLog, get_db
+from ..models.database import CollegeMetadata, CollegeSentiment, ORCRRecord, ShareLog, get_db
 from ..models.schemas import (
     MetadataResponse,
     SearchRequest,
@@ -210,6 +210,27 @@ def programs(
             q = q.filter(ORCRRecord.institute_type.in_(types))
     rows = q.order_by(ORCRRecord.program).all()
     return [r[0] for r in rows]
+
+
+@router.get("/college-meta")
+def college_meta(
+    institute: str,
+    db: Session = Depends(get_db),
+):
+    """Return placement stats, NIRF rank, and website URL for a college."""
+    row = db.query(CollegeMetadata).filter(CollegeMetadata.institute == institute).first()
+    if not row:
+        return {"available": False}
+    return {
+        "available": True,
+        "website_url": row.website_url,
+        "nirf_rank": row.nirf_rank,
+        "median_package": row.median_package,
+        "highest_package": row.highest_package,
+        "average_package": row.average_package,
+        "placement_pct": row.placement_pct,
+        "data_year": row.data_year,
+    }
 
 
 @router.get("/sentiment")

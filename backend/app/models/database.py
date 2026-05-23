@@ -104,6 +104,21 @@ class CollegeSentiment(Base):
     )
 
 
+class CollegeMetadata(Base):
+    __tablename__ = "college_metadata"
+
+    id = Column(Integer, primary_key=True)
+    institute = Column(String, unique=True, nullable=False, index=True)
+    website_url = Column(String, nullable=True)
+    nirf_rank = Column(Integer, nullable=True)
+    median_package = Column(Float, nullable=True)
+    highest_package = Column(Float, nullable=True)
+    average_package = Column(Float, nullable=True)
+    placement_pct = Column(Float, nullable=True)
+    data_year = Column(Integer, nullable=True)
+    updated_at = Column(DateTime, nullable=True)
+
+
 def derive_institute_type(name: str) -> str:
     import re
     n = re.sub(r"\s+", " ", name.strip().lower())

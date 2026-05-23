@@ -32,6 +32,17 @@ interface SentimentData {
   categories: SentimentCategory[];
 }
 
+interface CollegeMetaData {
+  available: boolean;
+  website_url?: string;
+  nirf_rank?: number;
+  median_package?: number;
+  highest_package?: number;
+  average_package?: number;
+  placement_pct?: number;
+  data_year?: number;
+}
+
 function getConfidence(score: number) {
   if (score >= 0.75) return { label: "HIGH", color: "text-emerald-600" };
   if (score >= 0.4) return { label: "MEDIUM", color: "text-amber-600" };
@@ -64,6 +75,7 @@ export default function CollegeCard({ result, allYears, rank, compact = false }:
   const [sentiment, setSentiment] = useState<SentimentData | null>(null);
   const [loading, setLoading] = useState(false);
   const [hasSentiment, setHasSentiment] = useState<boolean | null>(null);
+  const [meta, setMeta] = useState<CollegeMetaData | null>(null);
 
   const confidence = getConfidence(result.confidence_score);
   const typeColor =
@@ -73,20 +85,27 @@ export default function CollegeCard({ result, allYears, rank, compact = false }:
   ).length;
 
   useEffect(() => {
-    if (hasSentiment !== null) return;
     const params = new URLSearchParams({ institute: result.institute });
-    fetch(`${API_BASE}/api/sentiment?${params}`)
-      .then((r) => r.ok ? r.json() : null)
-      .then((data) => {
-        if (data) {
-          setHasSentiment(data.available && data.categories?.length > 0);
-          setSentiment(data);
-        } else {
-          setHasSentiment(false);
-        }
-      })
-      .catch(() => setHasSentiment(false));
-  }, [result.institute, hasSentiment]);
+    if (hasSentiment === null) {
+      fetch(`${API_BASE}/api/sentiment?${params}`)
+        .then((r) => r.ok ? r.json() : null)
+        .then((data) => {
+          if (data) {
+            setHasSentiment(data.available && data.categories?.length > 0);
+            setSentiment(data);
+          } else {
+            setHasSentiment(false);
+          }
+        })
+        .catch(() => setHasSentiment(false));
+    }
+    if (!meta) {
+      fetch(`${API_BASE}/api/college-meta?${params}`)
+        .then((r) => r.ok ? r.json() : null)
+        .then((data) => { if (data) setMeta(data); })
+        .catch(() => {});
+    }
+  }, [result.institute, hasSentiment, meta]);
 
   const handleClick = async () => {
     if (expanded) {
@@ -206,6 +225,56 @@ export default function CollegeCard({ result, allYears, rank, compact = false }:
       {/* Expanded detail table */}
       {expanded && (
         <div className="px-3 pb-3 border-t border-gray-100">
+          {/* Placement stats */}
+          {!compact && meta?.available && (
+            <div className="mt-2 mb-2 p-2 rounded-md bg-blue-50/50 border border-blue-100">
+              <div className="flex items-center justify-between mb-1.5">
+                <p className="text-[10px] font-semibold text-gray-500 flex items-center gap-1">
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  </svg>
+                  Placements {meta.data_year && `(${meta.data_year})`}
+                </p>
+                <div className="flex items-center gap-2">
+                  {meta.nirf_rank && (
+                    <span className="text-[9px] font-bold bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded">
+                      NIRF #{meta.nirf_rank}
+                    </span>
+                  )}
+                  {meta.website_url && (
+                    <a
+                      href={meta.website_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="text-[9px] text-blue-600 hover:text-blue-800 underline"
+                    >
+                      Website
+                    </a>
+                  )}
+                </div>
+              </div>
+              <div className="grid grid-cols-4 gap-2 text-center">
+                <div>
+                  <p className="text-[9px] text-gray-500">Median</p>
+                  <p className="text-[12px] font-bold text-gray-900">{meta.median_package} LPA</p>
+                </div>
+                <div>
+                  <p className="text-[9px] text-gray-500">Average</p>
+                  <p className="text-[12px] font-bold text-gray-900">{meta.average_package} LPA</p>
+                </div>
+                <div>
+                  <p className="text-[9px] text-gray-500">Highest</p>
+                  <p className="text-[12px] font-bold text-gray-900">{meta.highest_package} LPA</p>
+                </div>
+                <div>
+                  <p className="text-[9px] text-gray-500">Placed</p>
+                  <p className="text-[12px] font-bold text-gray-900">{meta.placement_pct}%</p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {loading ? (
             <div className="py-4 text-center text-xs text-gray-400">Loading round data...</div>
           ) : detail ? (

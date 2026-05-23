@@ -256,6 +256,17 @@ interface SentimentData {
   categories: SentimentCategory[];
 }
 
+interface CollegeMetaData {
+  available: boolean;
+  website_url?: string;
+  nirf_rank?: number;
+  median_package?: number;
+  highest_package?: number;
+  average_package?: number;
+  placement_pct?: number;
+  data_year?: number;
+}
+
 const CATEGORY_META: Record<string, { label: string; icon: string }> = {
   placements: { label: "Placements", icon: "💼" },
   campus_life: { label: "Campus Life", icon: "🎉" },
@@ -272,18 +283,26 @@ function getSentimentStyle(sentiment: string) {
 function CollegeGroupCard({ group, allYears, rank }: { group: CollegeGroup; allYears: string[]; rank: number }) {
   const [expanded, setExpanded] = useState(true);
   const [sentiment, setSentiment] = useState<SentimentData | null>(null);
+  const [meta, setMeta] = useState<CollegeMetaData | null>(null);
   const typeColor = INST_TYPE_COLORS[group.institute_type] || "bg-gray-100 text-gray-800";
   const confidence = getConfidence(group.bestScore);
 
   useEffect(() => {
-    if (expanded && !sentiment) {
-      const params = new URLSearchParams({ institute: group.institute });
+    if (!expanded) return;
+    const params = new URLSearchParams({ institute: group.institute });
+    if (!sentiment) {
       fetch(`${API_BASE}/api/sentiment?${params}`)
         .then((r) => r.ok ? r.json() : null)
         .then((data) => { if (data) setSentiment(data); })
         .catch(() => {});
     }
-  }, [expanded, group.institute, sentiment]);
+    if (!meta) {
+      fetch(`${API_BASE}/api/college-meta?${params}`)
+        .then((r) => r.ok ? r.json() : null)
+        .then((data) => { if (data) setMeta(data); })
+        .catch(() => {});
+    }
+  }, [expanded, group.institute, sentiment, meta]);
 
   return (
     <div className="border border-gray-200 rounded-lg bg-white overflow-hidden">
@@ -329,6 +348,56 @@ function CollegeGroupCard({ group, allYears, rank }: { group: CollegeGroup; allY
 
       {expanded && (
         <div className="border-t border-gray-100">
+          {/* Placement stats + website */}
+          {meta?.available && (
+            <div className="px-3 py-2 border-b border-gray-100 bg-blue-50/30">
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-[10px] font-semibold text-gray-500 flex items-center gap-1">
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  </svg>
+                  Placements {meta.data_year && `(${meta.data_year})`}
+                </p>
+                <div className="flex items-center gap-2">
+                  {meta.nirf_rank && (
+                    <span className="text-[9px] font-bold bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded">
+                      NIRF #{meta.nirf_rank}
+                    </span>
+                  )}
+                  {meta.website_url && (
+                    <a
+                      href={meta.website_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="text-[9px] text-blue-600 hover:text-blue-800 underline"
+                    >
+                      Website
+                    </a>
+                  )}
+                </div>
+              </div>
+              <div className="grid grid-cols-4 gap-2">
+                <div className="text-center">
+                  <p className="text-[10px] text-gray-500">Median</p>
+                  <p className="text-[13px] font-bold text-gray-900">{meta.median_package} LPA</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-[10px] text-gray-500">Average</p>
+                  <p className="text-[13px] font-bold text-gray-900">{meta.average_package} LPA</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-[10px] text-gray-500">Highest</p>
+                  <p className="text-[13px] font-bold text-gray-900">{meta.highest_package} LPA</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-[10px] text-gray-500">Placed</p>
+                  <p className="text-[13px] font-bold text-gray-900">{meta.placement_pct}%</p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Sentiment at college level */}
           {sentiment?.available && sentiment.categories.length > 0 && (
             <div className="px-3 py-2 border-b border-gray-100 bg-gray-50/50">
