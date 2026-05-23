@@ -2,7 +2,8 @@ import { useState, useMemo, useEffect } from "react";
 import CollegeCard from "./CollegeCard";
 import { INSTITUTE_TYPES, INST_TYPE_COLORS } from "../lib/constants";
 import { API_BASE, SHOW_SENTIMENT } from "../lib/api";
-import type { SearchResponse, SearchResult } from "../lib/types";
+import { generateChoiceList } from "../lib/generateChoiceList";
+import type { SearchResponse, SearchResult, SearchParams } from "../lib/types";
 
 type SortKey = "match" | "closing" | "name";
 
@@ -10,6 +11,7 @@ const PAGE_SIZE = 30;
 
 interface Props {
   data: SearchResponse;
+  searchParams: SearchParams | null;
 }
 
 interface CollegeGroup {
@@ -21,7 +23,7 @@ interface CollegeGroup {
   bestClosing: number;
 }
 
-export default function ResultsTable({ data }: Props) {
+export default function ResultsTable({ data, searchParams }: Props) {
   const [sort, setSort] = useState<SortKey>("match");
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [showCount, setShowCount] = useState(PAGE_SIZE);
@@ -129,6 +131,19 @@ export default function ResultsTable({ data }: Props) {
           </svg>
           Group by college
         </button>
+
+        {/* Generate Choice List */}
+        {searchParams && (
+          <button
+            onClick={() => generateChoiceList(filtered, searchParams, data.rank_used)}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] sm:text-xs font-medium transition border border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+            </svg>
+            Choice List (.xlsx)
+          </button>
+        )}
 
         {/* Sort */}
         <div className="flex items-center gap-1 text-[11px] sm:text-xs">

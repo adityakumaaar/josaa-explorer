@@ -165,7 +165,7 @@ function App() {
           {/* Results (with loading overlay for re-searches) */}
           {data && (
             <div className={loading ? "opacity-50 pointer-events-none transition" : ""}>
-              <ResultsTable data={data} />
+              <ResultsTable data={data} searchParams={lastParams} />
             </div>
           )}
 
