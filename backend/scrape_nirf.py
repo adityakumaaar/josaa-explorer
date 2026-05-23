@@ -132,7 +132,7 @@ COLLEGE_DATA: list[dict] = [
     },
     {
         "institute": "National Institute of Technology, Silchar",
-        "website_url": "https://nits.ac.in",
+        "website_url": "http://www.nits.ac.in",
         "nirf_rank": 70,
         "median_package": 7.5,
         "highest_package": 38.0,
@@ -152,7 +152,7 @@ COLLEGE_DATA: list[dict] = [
     },
     {
         "institute": "National Institute of Technology Hamirpur",
-        "website_url": "https://nith.ac.in",
+        "website_url": "https://www.nith.ac.in",
         "nirf_rank": 75,
         "median_package": 7.2,
         "highest_package": 35.0,
@@ -172,7 +172,7 @@ COLLEGE_DATA: list[dict] = [
     },
     {
         "institute": "National Institute of Technology Raipur",
-        "website_url": "https://nitrr.ac.in",
+        "website_url": "http://www.nitrr.ac.in",
         "nirf_rank": 78,
         "median_package": 7.0,
         "highest_package": 32.0,
@@ -182,7 +182,7 @@ COLLEGE_DATA: list[dict] = [
     },
     {
         "institute": "National Institute of Technology  Agartala",
-        "website_url": "https://nita.ac.in",
+        "website_url": "http://www.nita.ac.in",
         "nirf_rank": 95,
         "median_package": 6.0,
         "highest_package": 25.0,
@@ -192,7 +192,7 @@ COLLEGE_DATA: list[dict] = [
     },
     {
         "institute": "National Institute of Technology, Srinagar",
-        "website_url": "https://nitsri.ac.in",
+        "website_url": "https://www.nitsri.ac.in",
         "nirf_rank": 85,
         "median_package": 6.5,
         "highest_package": 28.0,
