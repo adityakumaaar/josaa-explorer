@@ -1,20 +1,23 @@
 import * as XLSX from "xlsx";
 import type { SearchResult, SearchParams } from "./types";
 
-const MAX_CHOICES = 100;
+const RANK_BUFFER = 5000;
 
 export function generateChoiceList(
   results: SearchResult[],
   params: SearchParams,
   rankUsed: number,
 ) {
-  const sorted = [...results].sort(
+  const included = results.filter((r) => {
+    if (r.latest_closing_rank === null) return true;
+    return r.latest_closing_rank <= rankUsed + RANK_BUFFER;
+  });
+
+  const sorted = [...included].sort(
     (a, b) =>
       a.confidence_score - b.confidence_score ||
       (a.latest_closing_rank ?? 999999) - (b.latest_closing_rank ?? 999999),
   );
-
-  const capped = sorted.slice(0, MAX_CHOICES);
 
   const headerRows = [
     ["JoSAA Choice List"],
@@ -33,6 +36,8 @@ export function generateChoiceList(
     ...(params.college_states?.length
       ? [["College States", params.college_states.join(", ")]]
       : []),
+    ["Includes closing ranks up to", `${RANK_BUFFER} beyond your rank`],
+    ["Total Choices", sorted.length],
     [],
     [
       "S.No",
@@ -45,7 +50,7 @@ export function generateChoiceList(
     ],
   ];
 
-  const dataRows = capped.map((r, i) => [
+  const dataRows = sorted.map((r, i) => [
     i + 1,
     r.institute,
     r.program,
