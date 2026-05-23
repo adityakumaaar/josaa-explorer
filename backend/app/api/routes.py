@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import func, distinct
 
-from ..models.database import ORCRRecord, ShareLog, get_db
+from ..models.database import CollegeSentiment, ORCRRecord, ShareLog, get_db
 from ..models.schemas import (
     MetadataResponse,
     SearchRequest,
@@ -210,3 +210,48 @@ def programs(
             q = q.filter(ORCRRecord.institute_type.in_(types))
     rows = q.order_by(ORCRRecord.program).all()
     return [r[0] for r in rows]
+
+
+@router.get("/sentiment")
+def sentiment(
+    institute: str,
+    program: str | None = None,
+    db: Session = Depends(get_db),
+):
+    """Return categorized sentiment data for a college (and optionally a program)."""
+    query = db.query(CollegeSentiment).filter(CollegeSentiment.institute == institute)
+    if program:
+        query = query.filter(CollegeSentiment.program == program)
+    else:
+        query = query.filter(CollegeSentiment.program.is_(None))
+
+    rows = query.all()
+
+    if not rows and program:
+        # Fallback: try college-level sentiment (program=None)
+        rows = (
+            db.query(CollegeSentiment)
+            .filter(CollegeSentiment.institute == institute, CollegeSentiment.program.is_(None))
+            .all()
+        )
+
+    if not rows:
+        return {"available": False, "categories": []}
+
+    categories = []
+    for row in rows:
+        categories.append({
+            "category": row.category,
+            "sentiment": row.sentiment,
+            "score": row.score,
+            "snippet": row.snippet,
+            "post_count": row.post_count,
+            "analyzed_at": row.analyzed_at.isoformat() if row.analyzed_at else None,
+        })
+
+    return {
+        "available": True,
+        "institute": institute,
+        "program": program,
+        "categories": categories,
+    }

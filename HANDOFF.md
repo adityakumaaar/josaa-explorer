@@ -2,85 +2,102 @@
 
 ## Goal
 
-Build and iterate on **JoSAA Explorer** — a web app that helps students find colleges based on JEE ranks using 7 years of scraped JoSAA opening/closing rank data (2019–2025). The app is deployed on Railway (FastAPI + React served as a single Docker service with Postgres).
+Build and iterate on **JoSAA Explorer** — a web app that helps students find colleges based on JEE ranks using scraped JoSAA opening/closing rank data (2021–2025). Originally deployed on Railway, now migrating to **Render** (free tier) due to Railway Postgres volume limits.
 
-**Live site:** `jossa-explorer-production.up.railway.app`
+**Render URLs:**
+- Backend: `https://josaa-backend-jivl.onrender.com`
+- Frontend: `https://jossa-frontend-s3r5.onrender.com`
 
 ## Current Progress
 
-### Completed
-- **Data scraping**: Playwright-based scrapers for archive (2019–2024) and current (2025) JoSAA data. Parallel scraping with retries (`backend/scrape_all_parallel.py`). Deployment-optimized script (`backend/scrape_deploy.py`) scrapes all rounds for 2022–2025 and last round only for 2019–2021 to fit Railway's 500MB Postgres limit.
-- **Backend (FastAPI)**: Search API with weighted confidence scoring (recent years weighted 2x). Quota resolution logic (HS/OS/AI) based on institute-to-state mapping. Share tracking. Programs and institutes endpoints.
-- **Frontend (React/Vite/Tailwind)**: Sidebar layout with filters, results area with single-column college cards. Searchable dropdowns for Home State and Program. Multi-select for years, pills for category/institute type. Mobile-responsive sidebar (fixed overlay with backdrop). Shareable URL params.
-- **Deployment**: Multi-stage Dockerfile, `railway.toml`, Postgres on Railway (SEA region). Static React build served via FastAPI.
-- **NIT classification fix**: `derive_institute_type()` in `backend/app/models/database.py:58` changed from `startswith` to `in` for NIT detection, fixing 6 NITs (Maulana Azad, MNIT Jaipur, MNNIT Allahabad, SVNIT Surat, VNIT Nagpur, Dr. B R Ambedkar NIT Jalandhar) that were misclassified as GFTI. Local SQLite was patched; Railway Postgres was already correct.
-- **Program searchable dropdown**: `GET /api/programs` endpoint accepts optional `?institute_types=IIT,NIT` filter. Frontend uses `createPortal` to render the dropdown list at `document.body` level to escape the sidebar's `overflow-y-auto` clipping. Position is calculated via `getBoundingClientRect()` on the input ref.
+### Completed (deployed or ready to deploy)
 
-### In Progress / Uncommitted Changes
-These changes exist on disk but have **not been committed or deployed**:
+- **Data scraping**: Playwright-based scrapers for archive (2021–2024) and current (2025) JoSAA data. Parallel scraping with retries. Script: `backend/scrape_deploy.py` — all rounds for 2021–2025.
+- **Backend (FastAPI)**: Search API with round-weighted confidence scoring, quota resolution (HS/OS/AI), college state filter, branch keyword filter, CRL rank for OPEN seats, detail endpoint (filtered by quota). Share tracking.
+- **Frontend (React/Vite/Tailwind)**: Sidebar layout, college cards with expandable round-by-year detail table (color-coded eligibility), group-by-college toggle, searchable branch type and college state filters. Mobile-responsive. Shareable URL params.
+- **Render deployment**: Frontend as static site, backend as web service, Postgres free tier (expires June 22, 2026). `VITE_API_URL` and `CORS_ORIGINS` configured. Backend startup runs migrations and state backfill in background thread to avoid Render timeout.
+- **Performance optimization**: Added `closing_rank >= min_rank` filter to search query + composite index `ix_closing_rank_filter`. Connection pooling (`pool_size=5, max_overflow=10, pool_pre_ping=True`).
+- **Integration tests**: 31 tests in `backend/tests/test_search_integration.py` covering quota logic, eligibility, round scoring, gender filtering, branch keywords, confidence properties, field integrity.
+- **Reddit sentiment feature** (code complete, not yet scraped/populated):
+  - Reddit scraper (`backend/app/scraper/reddit.py`) using `old.reddit.com/.json` endpoints — no API keys needed. 13 NITs/IIITs mapped to subreddits.
+  - Gemini sentiment analyzer (`backend/app/services/sentiment.py`) — categorized analysis (Placements, Campus Life, Faculty, Infrastructure) with structured JSON output.
+  - Orchestrator script (`backend/scrape_sentiment.py`) — CLI with `--scrape-only`, `--analyze-only`, `--institute`, `--limit` flags.
+  - API endpoint `GET /api/sentiment?institute=...&program=...` in `backend/app/api/routes.py`.
+  - Frontend UI in `CollegeCard.tsx` expanded view — 2x2 grid of sentiment cards with Reddit snippets.
+  - DB models: `RedditPost` and `CollegeSentiment` tables in `backend/app/models/database.py`.
 
-1. **Category eligibility for OPEN seats** (`backend/app/services/search.py`):
-   - Added `crl_rank` parameter to `search_colleges()`. Non-General students can now also see OPEN seats if they provide their CRL rank.
-   - `CATEGORY_TO_SEAT_TYPE` still maps each category to only its own seat types (line 8–14). When `crl_rank` is provided and category != General, OPEN is appended to seat_types dynamically (around line 145).
-   - Eligibility check uses `effective_rank`: CRL rank for OPEN/OPEN(PwD) seats, category rank for category seats.
+### Key Architecture Decisions
 
-2. **CRL rank field** (`frontend/src/components/SearchForm.tsx`):
-   - Second optional rank input appears when non-General category is selected.
-   - `crl_rank` added to `SearchParams` type (`frontend/src/lib/types.ts`) and URL params (`frontend/src/lib/urlParams.ts`).
-
-3. **Program dropdown** (`frontend/src/components/SearchForm.tsx`):
-   - Uses `createPortal(…, document.body)` with `position: fixed` and `z-index: 9999`.
-   - `progRect` state holds the input's `DOMRect`, set via `openProgDropdown()` called from `onFocus` and `onChange`.
-   - Programs fetched from `/api/programs` in a `useEffect` keyed on `instTypes`.
-
-4. **Backend programs endpoint** (`backend/app/api/routes.py:150–161`):
-   - Accepts `institute_types` query param (comma-separated string), filters `DISTINCT program` by institute type.
-
-5. **Schema** (`backend/app/models/schemas.py`):
-   - `SearchRequest` has new `crl_rank: int | None` field.
+- **Dropped 2019/2020 data** — not useful, was causing DB bloat.
+- **State stored in DB** (not derived at runtime) — `_backfill_states()` populates from `INSTITUTE_STATE_MAP` on startup.
+- **Quota included in grouping key** — ensures HS/OS/AI appear as distinct results.
+- **Round-based confidence scoring** — earlier round eligibility = higher sub-score (`ROUND_SCORE` dict).
+- **Sentiment: NITs/IIITs only** — IITs excluded from Reddit sentiment analysis.
+- **`API_BASE` pattern** — frontend reads `VITE_API_URL` env var (empty string for local dev with Vite proxy).
 
 ## What Worked
 
-- **Playwright** for scraping ASP.NET WebForms with `__doPostBack`. Must wait for `typeof __doPostBack === 'function'` before evaluating.
-- **Parallel scraping** with `ThreadPoolExecutor(max_workers=5)` and per-round retries.
-- **`createPortal` to `document.body`** for the program dropdown — only approach that escapes the sidebar's `overflow-y-auto` clipping.
-- **Inline flow dropdown** works fine for the Home State selector (positioned earlier in the form where there's space).
-- **`derive_institute_type` using `in` instead of `startswith`** for NIT detection (handles prefixed names like "Maulana Azad NIT").
+- **`old.reddit.com/.json` endpoints** for scraping without API credentials — append `.json` to any Reddit URL.
+- **Gemini free tier** with structured JSON output (`response_mime_type: "application/json"`) for reliable sentiment parsing.
+- **Background thread for startup tasks** — prevents Render timeout on `_backfill_states()`.
+- **`closing_rank >= min_rank` filter** — reduced search from 7-8s to 1-2s on Render free tier by eliminating 90%+ of rows at DB level.
+- **Playwright** for scraping ASP.NET WebForms with `__doPostBack`.
+- **`createPortal` to `document.body`** for dropdown that escapes sidebar's `overflow-y-auto`.
 
 ## What Didn't Work
 
-- **`position: absolute` dropdown inside `overflow-y-auto` sidebar**: Gets clipped at the container boundary. Tried adding `h-48` spacer div at bottom — still clips because the sidebar visible area doesn't auto-scroll.
-- **`scrollIntoView` on inline dropdown**: Technically works but UX is jarring — the sidebar jumps around.
-- **`position: fixed` without portal**: The `<ul>` was still inside the sidebar DOM, and some browsers still clip it. Portal is required.
-- **`position: fixed` with stale coordinates**: Initially, `progDropStyle` was only computed in `onFocus`. If focus was already held when the component re-rendered, coordinates were `{}` and the dropdown was invisible. Fixed by computing rect in both `onFocus` and `onChange` via `openProgDropdown()`.
+- **Railway free tier (0.5 GB volume)**: Postgres crashed from dead row bloat after deleting 300K records without VACUUM. Could not recover on free tier. Migrated to Render.
+- **Synchronous startup backfill on Render**: Server took >60s to start, Render killed it. Fix: `threading.Thread(target=_backfill_states, daemon=True).start()`.
+- **Fetching ALL records then filtering in Python**: Devastating on free-tier Postgres (7-8s queries). Must filter at DB level.
+- **CORS with specific origin**: Subtle mismatches (trailing slash, http vs https) caused 403 on preflight. Using `CORS_ORIGINS=*` for now (acceptable for public tool with no auth).
 
 ## Next Steps
 
-1. **Commit and deploy**: All changes above are uncommitted. Commit, push, and Railway will auto-deploy from the Dockerfile.
+1. **Run sentiment scraper**: Populate the database with Reddit sentiment data.
+   ```bash
+   cd backend && source venv/bin/activate
+   pip install google-genai
+   DATABASE_URL="<render_internal_url>" GEMINI_API_KEY="<key>" python scrape_sentiment.py --limit 5
+   ```
+   Get a free Gemini API key from https://aistudio.google.com/. After testing with `--limit 5`, run full (`python scrape_sentiment.py`).
 
-2. **Test CRL rank feature end-to-end**: Select a non-General category (e.g., SC), enter SC rank and CRL rank, verify results include both SC seats and OPEN seats with correct rank comparisons.
+2. **Add `GEMINI_API_KEY` to Render backend env vars** if you want on-demand analysis later.
 
-3. **Test program dropdown on production**: Verify the portal dropdown works correctly on the Railway deployment (both desktop and mobile).
+3. **Commit and push all changes** — the sentiment feature, Render migration changes, and performance optimization are all uncommitted.
 
-4. **Consider future improvements**:
-   - The `program_query` sent to search uses `ilike('%{query}%')` — when a full program name is selected from the dropdown, this is an exact substring match which works, but could be optimized to exact match.
-   - Year/round data could be fetched from the `/api/metadata` endpoint instead of being hardcoded in `SearchForm.tsx` (lines 5–6).
-   - AI integration hooks (the architecture supports adding prediction/chat endpoints).
+4. **Consider adding more NITs/IIITs** to the subreddit map in `backend/app/scraper/reddit.py` (currently 13 mapped; there are 30+ NITs total).
+
+5. **Render free Postgres expires June 22, 2026** — will need to recreate DB and re-scrape. Consider automating with a script or moving to a paid tier.
+
+6. **Cold start UX**: Render free web service spins down after 15 min inactivity (~30s cold start). Consider adding a loading state or "waking up" indicator on the frontend.
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
 | `backend/app/services/search.py` | Core search logic, quota resolution, scoring |
-| `backend/app/api/routes.py` | API endpoints |
-| `backend/app/models/database.py` | SQLAlchemy models, `derive_institute_type()` |
+| `backend/app/api/routes.py` | API endpoints (search, details, sentiment, programs) |
+| `backend/app/models/database.py` | SQLAlchemy models (ORCRRecord, RedditPost, CollegeSentiment) |
 | `backend/app/models/schemas.py` | Pydantic request/response models |
-| `backend/app/main.py` | FastAPI app, static file serving for SPA |
+| `backend/app/models/institute_states.py` | Institute → state mapping + `derive_state()` |
+| `backend/app/main.py` | FastAPI app, startup (migrations, backfill), static serving |
+| `backend/app/scraper/reddit.py` | Reddit scraper (old.reddit.com .json endpoints) |
+| `backend/app/services/sentiment.py` | Gemini-based categorized sentiment analysis |
+| `backend/scrape_sentiment.py` | CLI orchestrator for Reddit scraping + Gemini analysis |
+| `backend/scrape_deploy.py` | JoSAA data scraper (all rounds 2021–2025) |
 | `frontend/src/components/SearchForm.tsx` | Search form with all filters |
-| `frontend/src/components/ResultsTable.tsx` | Results display with cards |
-| `frontend/src/components/CollegeCard.tsx` | Individual college card |
+| `frontend/src/components/ResultsTable.tsx` | Results display with group-by-college toggle |
+| `frontend/src/components/CollegeCard.tsx` | College card with expandable details + sentiment |
 | `frontend/src/hooks/useSearch.ts` | Search API hook |
+| `frontend/src/lib/api.ts` | `API_BASE` constant (reads `VITE_API_URL`) |
 | `frontend/src/lib/types.ts` | TypeScript interfaces |
 | `frontend/src/lib/urlParams.ts` | URL param encode/decode for sharing |
-| `Dockerfile` | Multi-stage build (Node + Python) |
-| `railway.toml` | Railway deployment config |
+
+## Environment Variables (Render)
+
+| Service | Variable | Value |
+|---------|----------|-------|
+| Backend | `DATABASE_URL` | Render Internal Postgres URL |
+| Backend | `CORS_ORIGINS` | `*` |
+| Backend | `GEMINI_API_KEY` | Google AI Studio key (for sentiment) |
+| Frontend | `VITE_API_URL` | `https://josaa-backend-jivl.onrender.com` |

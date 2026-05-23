@@ -3,9 +3,11 @@ from sqlalchemy import (
     Boolean,
     Column,
     DateTime,
+    Float,
     Index,
     Integer,
     String,
+    Text,
     create_engine,
 )
 from sqlalchemy.orm import declarative_base, sessionmaker
@@ -61,6 +63,45 @@ class ShareLog(Base):
     home_state = Column(String, nullable=False)
     shared_at = Column(DateTime, nullable=False)
     share_count = Column(Integer, default=1)
+
+
+class RedditPost(Base):
+    __tablename__ = "reddit_posts"
+
+    id = Column(Integer, primary_key=True)
+    institute = Column(String, nullable=False)
+    program = Column(String, nullable=True)
+    subreddit = Column(String, nullable=False)
+    post_id = Column(String, unique=True, nullable=False)
+    title = Column(String, nullable=False)
+    body = Column(Text, nullable=True)
+    score = Column(Integer, default=0)
+    top_comments = Column(Text, nullable=True)
+    scraped_at = Column(DateTime, nullable=False)
+
+    __table_args__ = (
+        Index("ix_reddit_institute", "institute"),
+        Index("ix_reddit_post_id", "post_id", unique=True),
+    )
+
+
+class CollegeSentiment(Base):
+    __tablename__ = "college_sentiments"
+
+    id = Column(Integer, primary_key=True)
+    institute = Column(String, nullable=False)
+    program = Column(String, nullable=True)
+    category = Column(String, nullable=False)
+    sentiment = Column(String, nullable=False)
+    score = Column(Float, nullable=False)
+    snippet = Column(Text, nullable=True)
+    post_count = Column(Integer, default=0)
+    analyzed_at = Column(DateTime, nullable=False)
+
+    __table_args__ = (
+        Index("ix_sentiment_institute", "institute"),
+        Index("ix_sentiment_lookup", "institute", "program"),
+    )
 
 
 def derive_institute_type(name: str) -> str:

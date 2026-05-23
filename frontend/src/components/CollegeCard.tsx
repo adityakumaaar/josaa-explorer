@@ -19,6 +19,19 @@ interface DetailData {
   rounds: { [round: string]: RoundData };
 }
 
+interface SentimentCategory {
+  category: string;
+  sentiment: "positive" | "neutral" | "negative";
+  score: number;
+  snippet: string;
+  post_count: number;
+}
+
+interface SentimentData {
+  available: boolean;
+  categories: SentimentCategory[];
+}
+
 function getConfidence(score: number) {
   if (score >= 0.75) return { label: "HIGH", color: "text-emerald-600" };
   if (score >= 0.4) return { label: "MEDIUM", color: "text-amber-600" };
@@ -32,9 +45,23 @@ function getCellColor(closingRank: number | null, userRank: number): string {
   return "bg-red-50 text-red-900";
 }
 
+const CATEGORY_META: Record<string, { label: string; icon: string }> = {
+  placements: { label: "Placements", icon: "💼" },
+  campus_life: { label: "Campus Life", icon: "🎉" },
+  faculty: { label: "Faculty", icon: "👨‍🏫" },
+  infrastructure: { label: "Infrastructure", icon: "🏗️" },
+};
+
+function getSentimentStyle(sentiment: string) {
+  if (sentiment === "positive") return "bg-emerald-50 text-emerald-700 border-emerald-200";
+  if (sentiment === "negative") return "bg-red-50 text-red-700 border-red-200";
+  return "bg-gray-50 text-gray-600 border-gray-200";
+}
+
 export default function CollegeCard({ result, allYears, rank, compact = false }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [detail, setDetail] = useState<DetailData | null>(null);
+  const [sentiment, setSentiment] = useState<SentimentData | null>(null);
   const [loading, setLoading] = useState(false);
 
   const confidence = getConfidence(result.confidence_score);
@@ -70,6 +97,15 @@ export default function CollegeCard({ result, allYears, rank, compact = false }:
       // silently fail
     } finally {
       setLoading(false);
+    }
+
+    // Fetch sentiment in parallel (non-blocking)
+    if (!sentiment) {
+      const sentimentParams = new URLSearchParams({ institute: result.institute });
+      fetch(`${API_BASE}/api/sentiment?${sentimentParams}`)
+        .then((r) => r.ok ? r.json() : null)
+        .then((data) => { if (data) setSentiment(data); })
+        .catch(() => {});
     }
   };
 
@@ -208,6 +244,42 @@ export default function CollegeCard({ result, allYears, rank, compact = false }:
             </div>
           ) : (
             <div className="py-4 text-center text-xs text-gray-400">Failed to load details</div>
+          )}
+
+          {/* Reddit Sentiment Section */}
+          {sentiment?.available && sentiment.categories.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-gray-100">
+              <p className="text-[11px] font-semibold text-gray-500 mb-2 flex items-center gap-1">
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 0C5.373 0 0 4.373 0 9.757c0 3.268 1.882 6.173 4.83 7.945-.046 1.18-.48 3.225-2.33 4.298 2.726-.2 4.946-1.408 6.227-2.388.83.12 1.68.182 2.547.182h.453C17.627 19.794 24 15.42 24 9.757 24 4.373 18.627 0 12 0z"/>
+                </svg>
+                Reddit Sentiment
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {sentiment.categories.map((cat) => {
+                  const meta = CATEGORY_META[cat.category] || { label: cat.category, icon: "📊" };
+                  const style = getSentimentStyle(cat.sentiment);
+                  return (
+                    <div key={cat.category} className={`rounded-md border p-2 ${style}`}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[11px] font-semibold">
+                          {meta.icon} {meta.label}
+                        </span>
+                        <span className="text-[10px] font-bold">{cat.score}/5</span>
+                      </div>
+                      {cat.snippet && (
+                        <p className="text-[10px] italic leading-tight opacity-80 line-clamp-2">
+                          "{cat.snippet}"
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="text-[9px] text-gray-400 mt-1.5 text-right">
+                Based on {sentiment.categories[0]?.post_count || 0} Reddit posts
+              </p>
+            </div>
           )}
         </div>
       )}
