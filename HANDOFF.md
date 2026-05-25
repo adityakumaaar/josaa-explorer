@@ -14,7 +14,7 @@ Build and iterate on **JoSAA Explorer** — a web app that helps students find c
 
 - **Data scraping**: Playwright-based scrapers for archive (2021–2024) and current (2025) JoSAA data. Parallel scraping with retries. Script: `backend/scrape_deploy.py` — all rounds for 2021–2025.
 - **Backend (FastAPI)**: Search API with round-weighted confidence scoring, quota resolution (HS/OS/AI), college state filter, branch keyword filter, CRL rank for OPEN seats, detail endpoint (filtered by quota). Share tracking.
-- **Frontend (React/Vite/Tailwind)**: Sidebar layout, college cards with expandable round-by-year detail table (color-coded eligibility), group-by-college toggle, searchable branch type and college state filters. Mobile-responsive. Shareable URL params.
+- **Frontend (React/Vite/Tailwind)**: Sidebar layout, college cards with expandable round-by-year detail table (color-coded eligibility), three view modes (List / Grouped / Mind map), searchable branch type and college state filters. Mobile-responsive. Shareable URL params.
 - **Render deployment**: Frontend as static site, backend as web service, Postgres free tier (expires June 22, 2026). `VITE_API_URL` and `CORS_ORIGINS` configured. Backend startup runs migrations and state backfill in background thread to avoid Render timeout.
 - **Performance optimization**: Added `closing_rank >= min_rank` filter to search query + composite index `ix_closing_rank_filter`. Connection pooling (`pool_size=5, max_overflow=10, pool_pre_ping=True`).
 - **Integration tests**: 31 tests in `backend/tests/test_search_integration.py` covering quota logic, eligibility, round scoring, gender filtering, branch keywords, confidence properties, field integrity.
@@ -32,6 +32,15 @@ Build and iterate on **JoSAA Explorer** — a web app that helps students find c
   - Curated data script `backend/scrape_nirf.py` — 51 NITs/IIITs with NIRF 2024 placement stats and verified website URLs.
   - API endpoint `GET /api/college-meta?institute=...` in `backend/app/api/routes.py`.
   - Frontend: placement stats (Median/Average/Highest/Placed %) shown in expanded `CollegeCard` and `CollegeGroupCard` with NIRF rank badge and external website link (opens in new tab with external link icon).
+- **JoSAA choice list Excel export** (client-side, ready to deploy):
+  - `frontend/src/lib/generateChoiceList.ts` — builds `.xlsx` from search results using `xlsx` (SheetJS). Sorted least-likely → most-likely (aspirational first). Includes rank, category, filters, and all matching results (no cap). Button in `ResultsTable.tsx` toolbar.
+  - **Do not re-filter by closing rank on the client** — an earlier `rank + 5000` buffer incorrectly dropped eligible colleges (JoSAA closing rank is an upper bound; higher closing = easier admission).
+- **College mind map canvas view** (ready to deploy):
+  - Third results view mode alongside List and Grouped — interactive pan/zoom tree via `@xyflow/react` + `@dagrejs/dagre` (LR layout).
+  - Grouping switch inside mind map: **Type** (default) | **State** | **Confidence** — each produces a 3-level tree (bucket → college → program).
+  - Colleges with 2+ programs start collapsed; click group/college to expand/collapse; click program leaf for detail card (quota, closing rank, confidence).
+  - Graph builder: `frontend/src/lib/buildMindMapGraph.ts`. UI: `frontend/src/components/mindmap/CollegeMindMap.tsx`, `frontend/src/components/mindmap/nodes.tsx`.
+  - View toggle in `ResultsTable.tsx`: List | Grouped | Mind map segmented control.
 
 ### Key Architecture Decisions
 
@@ -44,6 +53,7 @@ Build and iterate on **JoSAA Explorer** — a web app that helps students find c
 - **`API_BASE` pattern** — frontend reads `VITE_API_URL` env var (empty string for local dev with Vite proxy).
 - **Feature flags via `VITE_*` env vars** — `VITE_SHOW_SENTIMENT` controls sentiment visibility; requires rebuild to toggle.
 - **Placement data pre-populated** — NIRF data is annual/static, stored in `college_metadata` table. No benefit to lazy loading.
+- **Mind map uses client-side graph only** — no extra API calls; reuses filtered search results. Sentiment/placement not shown on map nodes in v1.
 
 ## What Worked
 
@@ -55,6 +65,8 @@ Build and iterate on **JoSAA Explorer** — a web app that helps students find c
 - **`closing_rank >= min_rank` filter** — reduced search from 7-8s to 1-2s on Render free tier by eliminating 90%+ of rows at DB level.
 - **Playwright** for scraping ASP.NET WebForms with `__doPostBack`.
 - **`createPortal` to `document.body`** for dropdown that escapes sidebar's `overflow-y-auto`.
+- **Client-side Excel export** with SheetJS — no backend endpoint needed; export uses same `filtered` array as the UI.
+- **`@xyflow/react` + dagre** for mind map — custom node components per level (root/group/college/program), collapse by hiding descendant nodes.
 
 ## What Didn't Work
 
@@ -63,6 +75,7 @@ Build and iterate on **JoSAA Explorer** — a web app that helps students find c
 - **Fetching ALL records then filtering in Python**: Devastating on free-tier Postgres (7-8s queries). Must filter at DB level.
 - **CORS with specific origin**: Subtle mismatches (trailing slash, http vs https) caused 403 on preflight. Using `CORS_ORIGINS=*` for now (acceptable for public tool with no auth).
 - **Some college websites use HTTP-only or require `www.` prefix**: `nits.ac.in`, `nita.ac.in`, `nitrr.ac.in` don't respond on bare `https://` — fixed with `http://www.` prefix in `scrape_nirf.py`.
+- **Excel export rank buffer filter**: Filtering `closing_rank <= rank + 5000` on the client dropped most eligible results (e.g. 84 UI results → 31 in Excel). Fix: export all search results without client-side rank filtering.
 
 ## Next Steps
 
@@ -80,13 +93,15 @@ Build and iterate on **JoSAA Explorer** — a web app that helps students find c
 
 3. **Verify website URLs**: Some college websites in `scrape_nirf.py` may be incorrect. When users report broken links, update the `website_url` field for that institute.
 
-4. **Commit and push all changes** — placement data feature, sentiment improvements, and feature flag are all uncommitted.
+4. **Commit and push all changes** — choice list export, mind map view, placement data, sentiment improvements, and feature flag are all uncommitted.
 
-5. **Render free Postgres expires June 22, 2026** — will need to recreate DB and re-scrape. Consider automating with a script or moving to a paid tier.
+5. **Mind map v2 ideas** (optional): lazy-load `@xyflow/react` via dynamic import to reduce initial bundle (~745 KB JS); radial layout; show placement/sentiment on college nodes; code-split mind map route.
 
-6. **Phase 2: Branch-wise placement data** — NIRF only has institute-level stats. Branch-specific data (CS/ECE/Mech) would need parsing individual college placement PDFs or using Gemini to extract from reports.
+6. **Render free Postgres expires June 22, 2026** — will need to recreate DB and re-scrape. Consider automating with a script or moving to a paid tier.
 
-7. **Cold start UX**: Render free web service spins down after 15 min inactivity (~30s cold start). Consider adding a loading state or "waking up" indicator on the frontend.
+7. **Phase 2: Branch-wise placement data** — NIRF only has institute-level stats. Branch-specific data (CS/ECE/Mech) would need parsing individual college placement PDFs or using Gemini to extract from reports.
+
+8. **Cold start UX**: Render free web service spins down after 15 min inactivity (~30s cold start). Consider adding a loading state or "waking up" indicator on the frontend.
 
 ## Key Files
 
@@ -104,7 +119,11 @@ Build and iterate on **JoSAA Explorer** — a web app that helps students find c
 | `backend/scrape_nirf.py` | Populate college_metadata table (NIRF ranks, placements, website URLs) |
 | `backend/scrape_deploy.py` | JoSAA data scraper (all rounds 2021–2025) |
 | `frontend/src/components/SearchForm.tsx` | Search form with all filters |
-| `frontend/src/components/ResultsTable.tsx` | Results display, group-by-college, CollegeGroupCard (with placement + sentiment) |
+| `frontend/src/components/ResultsTable.tsx` | Results display, view modes (List/Grouped/Mind map), Excel export, CollegeGroupCard |
+| `frontend/src/components/mindmap/CollegeMindMap.tsx` | Interactive mind map canvas (React Flow) |
+| `frontend/src/components/mindmap/nodes.tsx` | Custom mind map node components |
+| `frontend/src/lib/buildMindMapGraph.ts` | Tree builder for mind map (type/state/confidence grouping) |
+| `frontend/src/lib/generateChoiceList.ts` | Client-side JoSAA choice list `.xlsx` export |
 | `frontend/src/components/CollegeCard.tsx` | College card with expandable details, placement stats, sentiment |
 | `frontend/src/hooks/useSearch.ts` | Search API hook |
 | `frontend/src/lib/api.ts` | `API_BASE` and `SHOW_SENTIMENT` feature flag |
