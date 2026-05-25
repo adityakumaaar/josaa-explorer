@@ -1,15 +1,81 @@
-/** Map app state names to GeoJSON NAME_1 (geohacker/india dataset). */
-export const STATE_TO_GEO: Record<string, string> = {
-  Odisha: "Orissa",
-  Uttarakhand: "Uttaranchal",
-  Telangana: "Andhra Pradesh",
-  Ladakh: "Jammu and Kashmir",
+/** Map GeoJSON STNAME values to app state names (LGD / Survey of India dataset). */
+
+const GEO_NAME_ALIASES: Record<string, string> = {
+  "andaman and nicobar": "Andaman and Nicobar",
+  "andhra pradesh": "Andhra Pradesh",
+  "arunachal pradesh": "Arunachal Pradesh",
+  assam: "Assam",
+  bihar: "Bihar",
+  chandigarh: "Chandigarh",
+  chhattisgarh: "Chhattisgarh",
+  "dadra and nagar haveli and daman and diu": "Dadra and Nagar Haveli and Daman and Diu",
+  delhi: "Delhi",
+  goa: "Goa",
+  gujarat: "Gujarat",
+  haryana: "Haryana",
+  "himachal pradesh": "Himachal Pradesh",
+  "jammu and kashmir": "Jammu and Kashmir",
+  "jammu & kashmir": "Jammu and Kashmir",
+  jharkhand: "Jharkhand",
+  karnataka: "Karnataka",
+  kerala: "Kerala",
+  ladakh: "Ladakh",
+  lakshadweep: "Lakshadweep",
+  "madhya pradesh": "Madhya Pradesh",
+  maharashtra: "Maharashtra",
+  manipur: "Manipur",
+  meghalaya: "Meghalaya",
+  mizoram: "Mizoram",
+  nagaland: "Nagaland",
+  odisha: "Odisha",
+  puducherry: "Puducherry",
+  punjab: "Punjab",
+  rajasthan: "Rajasthan",
+  sikkim: "Sikkim",
+  "tamil nadu": "Tamil Nadu",
+  telangana: "Telangana",
+  tripura: "Tripura",
+  "uttar pradesh": "Uttar Pradesh",
+  uttarakhand: "Uttarakhand",
+  "west bengal": "West Bengal",
 };
 
-export const GEO_TO_STATE: Record<string, string> = {
-  Orissa: "Odisha",
-  Uttaranchal: "Uttarakhand",
-};
+function stripDiacritics(value: string): string {
+  return value.normalize("NFD").replace(/\p{M}/gu, "");
+}
+
+function normalizeKey(value: string): string {
+  return stripDiacritics(value)
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Normalize a GeoJSON state name to the app's canonical state label. */
+export function normalizeGeoStateName(raw: string): string {
+  const key = normalizeKey(raw);
+  return GEO_NAME_ALIASES[key] ?? raw.trim();
+}
+
+/** Read STNAME (or fallback keys) from a GeoJSON feature's properties. */
+export function getGeoFeatureStateName(properties: Record<string, unknown> | null | undefined): string {
+  const raw =
+    properties?.STNAME ??
+    properties?.NAME_1 ??
+    properties?.state ??
+    properties?.STATE ??
+    "";
+  return normalizeGeoStateName(String(raw));
+}
+
+export function appStateToGeo(state: string): string {
+  return state;
+}
+
+export function geoStateToApp(geoName: string): string {
+  return normalizeGeoStateName(geoName);
+}
 
 /** Approximate state centroids [lng, lat] for marker placement. */
 export const STATE_CENTROIDS: Record<string, [number, number]> = {
@@ -46,14 +112,6 @@ export const STATE_CENTROIDS: Record<string, [number, number]> = {
   Uttarakhand: [79.02, 30.07],
   "West Bengal": [87.85, 22.99],
 };
-
-export function appStateToGeo(state: string): string {
-  return STATE_TO_GEO[state] ?? state;
-}
-
-export function geoStateToApp(geoName: string): string {
-  return GEO_TO_STATE[geoName] ?? geoName;
-}
 
 export function getCentroid(state: string | null): [number, number] | null {
   if (!state) return null;

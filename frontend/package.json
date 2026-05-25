@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "build:india-map": "node scripts/build-india-map.mjs"
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.0.0",
@@ -20,6 +21,10 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@tailwindcss/vite": "^4.3.0",
+    "@turf/helpers": "^7.2.0",
+    "@turf/rewind": "^7.3.5",
+    "@turf/simplify": "^7.2.0",
+    "@turf/union": "^7.2.0",
     "@types/d3-geo": "^3.1.0",
     "@types/geojson": "^7946.0.16",
     "@types/node": "^24.12.3",

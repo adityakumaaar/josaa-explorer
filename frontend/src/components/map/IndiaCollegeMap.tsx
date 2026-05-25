@@ -7,7 +7,7 @@ import {
   type InstituteSummary,
   type StateSummary,
 } from "../../lib/aggregateMapChoices";
-import { appStateToGeo, geoStateToApp } from "../../lib/stateGeo";
+import { getGeoFeatureStateName } from "../../lib/stateGeo";
 import { INST_TYPE_COLORS } from "../../lib/constants";
 import type { SearchResult } from "../../lib/types";
 
@@ -46,8 +46,7 @@ export default function IndiaCollegeMap({ results, rankUsed }: Props) {
   const geoCounts = useMemo(() => {
     const m = new Map<string, number>();
     for (const s of mapData.byState) {
-      const geoKey = appStateToGeo(s.state);
-      m.set(geoKey, (m.get(geoKey) ?? 0) + s.programCount);
+      m.set(s.state, (m.get(s.state) ?? 0) + s.programCount);
     }
     return m;
   }, [mapData]);
@@ -55,9 +54,8 @@ export default function IndiaCollegeMap({ results, rankUsed }: Props) {
   const statesForGeo = useMemo(() => {
     const m = new Map<string, StateSummary[]>();
     for (const s of mapData.byState) {
-      const geoKey = appStateToGeo(s.state);
-      if (!m.has(geoKey)) m.set(geoKey, []);
-      m.get(geoKey)!.push(s);
+      if (!m.has(s.state)) m.set(s.state, []);
+      m.get(s.state)!.push(s);
     }
     return m;
   }, [mapData]);
@@ -83,8 +81,7 @@ export default function IndiaCollegeMap({ results, rankUsed }: Props) {
     if (!selectedState) return null;
     const direct = mapData.byState.find((s) => s.state === selectedState);
     if (direct) return direct;
-    const geoKey = appStateToGeo(selectedState);
-    const grouped = statesForGeo.get(geoKey) ?? statesForGeo.get(selectedState);
+    const grouped = statesForGeo.get(selectedState);
     if (!grouped?.length) return null;
     return {
       state: grouped.map((s) => s.state).join(" / "),
@@ -120,34 +117,43 @@ export default function IndiaCollegeMap({ results, rankUsed }: Props) {
           ))}
         </div>
       </div>
+      <p className="px-3 py-1.5 text-[10px] text-gray-400 border-b border-gray-100 bg-white">
+        Map boundaries per Survey of India (via LGD/DataMeet).{" "}
+        <a
+          href="https://surveyofindia.gov.in/pages/political-map-of-india/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-blue-600 hover:underline"
+        >
+          Official maps
+        </a>
+      </p>
 
       <div className="flex flex-col lg:flex-row min-h-[520px] h-[60vh]">
         <div className="flex-1 overflow-auto p-2 bg-sky-50/40">
           <svg viewBox="0 0 760 820" className="w-full h-full min-h-[480px]">
             {geo.features.map((feature, i) => {
-              const geoName = String(feature.properties?.NAME_1 ?? "");
-              const appName = geoStateToApp(geoName);
-              const count = geoCounts.get(geoName) ?? 0;
-              const isSelected =
-                selectedState === appName ||
-                selectedState === geoName ||
-                appStateToGeo(selectedState ?? "") === geoName;
+              const appName = getGeoFeatureStateName(
+                feature.properties as Record<string, unknown> | undefined,
+              );
+              const count = geoCounts.get(appName) ?? 0;
+              const isSelected = selectedState === appName;
               const d = pathGen(feature);
 
               return (
                 <path
-                  key={`${geoName}-${i}`}
+                  key={`${appName}-${i}`}
                   d={d ?? undefined}
                   fill={stateFill(count, mapData.maxProgramsPerState, isSelected)}
                   stroke={isSelected ? "#1d4ed8" : "#94a3b8"}
                   strokeWidth={isSelected ? 1.5 : 0.6}
                   className="cursor-pointer transition-colors"
                   onClick={() => {
-                    setSelectedState(appName || geoName);
+                    setSelectedState(appName);
                     setSelectedInstitute(null);
                   }}
                 >
-                  <title>{`${appName || geoName}: ${count} program${count !== 1 ? "s" : ""}`}</title>
+                  <title>{`${appName}: ${count} program${count !== 1 ? "s" : ""}`}</title>
                 </path>
               );
             })}
