@@ -43,9 +43,9 @@ export default function ResultsTable({ data, searchParams }: Props) {
   const [quotaTags, setQuotaTags] = useState<Set<QuotaTag>>(new Set());
   const [hsOnly, setHsOnly] = useState(false);
   const [has2025Only, setHas2025Only] = useState(true);
-  // Table view click-to-sort state. Default = 2025 OS ascending so the
+  // Table view click-to-sort state. Default = 2025 OS/AI ascending so the
   // rank-window shows reach -> safe top-to-bottom (matches the Excel writer).
-  const [tableSortCol, setTableSortCol] = useState<SortColumn>("os_2025");
+  const [tableSortCol, setTableSortCol] = useState<SortColumn>("osAi_2025");
   const [tableSortDir, setTableSortDir] = useState<SortDir>("asc");
 
   const allYears = useMemo(() => {
@@ -499,26 +499,8 @@ function PivotTable({
                 className="whitespace-nowrap"
               />
               <SortableTh
-                label="2025 HS"
-                col="hs_2025"
-                sortCol={sortCol}
-                sortDir={sortDir}
-                onSort={onSort}
-                align="right"
-                className="whitespace-nowrap"
-              />
-              <SortableTh
-                label="2025 OS"
-                col="os_2025"
-                sortCol={sortCol}
-                sortDir={sortDir}
-                onSort={onSort}
-                align="right"
-                className="whitespace-nowrap"
-              />
-              <SortableTh
-                label="2025 AI"
-                col="ai_2025"
+                label="2025 OS/AI"
+                col="osAi_2025"
                 sortCol={sortCol}
                 sortDir={sortDir}
                 onSort={onSort}
@@ -534,7 +516,16 @@ function PivotTable({
                 align="center"
                 className="whitespace-nowrap"
               />
-              <th className="font-semibold px-2 py-2 text-center whitespace-nowrap">HS</th>
+              <th className="font-semibold px-2 py-2 text-center whitespace-nowrap">HS Eligible</th>
+              <SortableTh
+                label="2025 HS"
+                col="hs_2025"
+                sortCol={sortCol}
+                sortDir={sortDir}
+                onSort={onSort}
+                align="right"
+                className="whitespace-nowrap"
+              />
               <SortableTh
                 label="Confidence"
                 col="confidence"
@@ -574,9 +565,12 @@ function PivotTable({
                     <div>{r.seat_type}</div>
                     <div className="text-gray-400">{shortGender(r.gender)}</div>
                   </td>
-                  <RankCell value={r.hs_2025} eligible={r.eligibleHS} rank={rank} />
-                  <RankCell value={r.os_2025} eligible={r.eligibleOS} rank={rank} />
-                  <RankCell value={r.ai_2025} eligible={r.eligibleAI} rank={rank} />
+                  <RankCell
+                    value={r.osAi_2025}
+                    eligible={r.eligibleOsAi}
+                    rank={rank}
+                    quota={r.osAiQuota}
+                  />
                   <td className="px-2 py-2 text-center align-top">
                     <PickBadge pick={r.pickType} margin={r.bestMargin} />
                   </td>
@@ -589,6 +583,7 @@ function PivotTable({
                       <span className="text-gray-300">—</span>
                     )}
                   </td>
+                  <RankCell value={r.hs_2025} eligible={r.eligibleHS} rank={rank} />
                   <td className={`px-2 py-2 text-right align-top whitespace-nowrap font-semibold ${
                     r.pickType === "noData"
                       ? "text-gray-400 font-normal"
@@ -731,10 +726,12 @@ function RankCell({
   value,
   eligible,
   rank,
+  quota,
 }: {
   value: number | null;
   eligible: boolean;
   rank: number;
+  quota?: "OS" | "AI" | null;
 }) {
   if (value == null) {
     return <td className="px-2 py-2 text-right text-gray-300 align-top">—</td>;
@@ -747,7 +744,14 @@ function RankCell({
       : "text-gray-500";
   return (
     <td className={`px-2 py-2 text-right align-top tabular-nums ${tone}`}>
-      <div>{value.toLocaleString()}</div>
+      <div className="flex items-center justify-end gap-1.5">
+        {quota && (
+          <span className="text-[9px] font-semibold uppercase tracking-wide text-gray-400 bg-gray-100 rounded px-1 py-px">
+            {quota}
+          </span>
+        )}
+        <span>{value.toLocaleString()}</span>
+      </div>
       <div className="text-[10px] text-gray-400">
         {margin >= 0 ? `+${margin.toLocaleString()}` : margin.toLocaleString()}
       </div>

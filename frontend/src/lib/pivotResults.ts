@@ -25,6 +25,13 @@ export interface PivotRow {
   hs_2025: number | null;
   os_2025: number | null;
   ai_2025: number | null;
+  // Merged OS/AI rank for display + sorting. NITs allocate via OS, IIITs and
+  // GFTIs via AI -- they are mutually exclusive at the (institute, program,
+  // seat_type, gender) level, so a single column is the natural unit. If
+  // both are somehow present we prefer OS (NIT-style canonical bucket).
+  osAi_2025: number | null;
+  osAiQuota: "OS" | "AI" | null;
+  eligibleOsAi: boolean;
   has_2025: boolean;
   refByYear: Record<string, number | null>;
   confidence: number;
@@ -115,6 +122,20 @@ export function pivotResults(
     const eligibleOS = isEligible(os_2025);
     const eligibleAI = isEligible(ai_2025);
 
+    // Merge OS/AI into a single column. They're mutually exclusive in
+    // practice (NIT/IIT-style vs IIIT/GFTI), so picking the present one
+    // produces a single canonical "non-home-state" rank for sorting.
+    let osAi_2025: number | null = null;
+    let osAiQuota: "OS" | "AI" | null = null;
+    if (os_2025 != null) {
+      osAi_2025 = os_2025;
+      osAiQuota = "OS";
+    } else if (ai_2025 != null) {
+      osAi_2025 = ai_2025;
+      osAiQuota = "AI";
+    }
+    const eligibleOsAi = osAiQuota === "OS" ? eligibleOS : osAiQuota === "AI" ? eligibleAI : false;
+
     // bestMargin = max(closing - rankUsed) across quotas with 2025 data.
     // Positive => user clears the closing rank (eligible).
     // Negative => reach (closing < rank).
@@ -148,6 +169,9 @@ export function pivotResults(
       hs_2025,
       os_2025,
       ai_2025,
+      osAi_2025,
+      osAiQuota,
+      eligibleOsAi,
       has_2025,
       refByYear,
       confidence,
@@ -165,15 +189,15 @@ export function pivotResults(
 const orderKey = (n: number | null) => (n == null ? Number.POSITIVE_INFINITY : n);
 
 /**
- * Default sort: 2025 OS asc → 2025 AI asc → confidence desc.
+ * Default sort: 2025 OS/AI asc → confidence desc.
+ * OS and AI are mutually exclusive at the program level (NIT vs IIIT/GFTI),
+ * so they sort as a single canonical "non-home-state" rank column.
  * Mirrors the Excel writer so users see the same ordering everywhere.
  */
 export function sortPivotByOsAi(rows: PivotRow[]): PivotRow[] {
   return [...rows].sort((a, b) => {
-    const osDiff = orderKey(a.os_2025) - orderKey(b.os_2025);
-    if (osDiff !== 0) return osDiff;
-    const aiDiff = orderKey(a.ai_2025) - orderKey(b.ai_2025);
-    if (aiDiff !== 0) return aiDiff;
+    const osAiDiff = orderKey(a.osAi_2025) - orderKey(b.osAi_2025);
+    if (osAiDiff !== 0) return osAiDiff;
     return b.confidence - a.confidence;
   });
 }
@@ -187,13 +211,12 @@ export function sortPivotByBest(rows: PivotRow[]): PivotRow[] {
   });
 }
 
-/** Sort by confidence desc, then OS asc. */
+/** Sort by confidence desc, then OS/AI asc. */
 export function sortPivotByMatch(rows: PivotRow[]): PivotRow[] {
   return [...rows].sort(
     (a, b) =>
       b.confidence - a.confidence ||
-      orderKey(a.os_2025) - orderKey(b.os_2025) ||
-      orderKey(a.ai_2025) - orderKey(b.ai_2025),
+      orderKey(a.osAi_2025) - orderKey(b.osAi_2025),
   );
 }
 
@@ -212,9 +235,8 @@ export type SortColumn =
   | "state"
   | "program"
   | "seat_type"
+  | "osAi_2025"
   | "hs_2025"
-  | "os_2025"
-  | "ai_2025"
   | "pickType"
   | "confidence";
 
@@ -242,10 +264,8 @@ function compareForColumn(a: PivotRow, b: PivotRow, col: SortColumn): number {
       );
     case "hs_2025":
       return orderKey(a.hs_2025) - orderKey(b.hs_2025);
-    case "os_2025":
-      return orderKey(a.os_2025) - orderKey(b.os_2025);
-    case "ai_2025":
-      return orderKey(a.ai_2025) - orderKey(b.ai_2025);
+    case "osAi_2025":
+      return orderKey(a.osAi_2025) - orderKey(b.osAi_2025);
     case "pickType":
       return PICK_ORDER[a.pickType] - PICK_ORDER[b.pickType];
     case "confidence":
@@ -266,8 +286,8 @@ export function sortPivotBy(
   return [...rows].sort((a, b) => {
     const primary = compareForColumn(a, b, column) * sign;
     if (primary !== 0) return primary;
-    const tieOs = orderKey(a.os_2025) - orderKey(b.os_2025);
-    if (tieOs !== 0) return tieOs;
+    const tieOsAi = orderKey(a.osAi_2025) - orderKey(b.osAi_2025);
+    if (tieOsAi !== 0) return tieOsAi;
     return (
       a.institute.localeCompare(b.institute) ||
       a.program.localeCompare(b.program)

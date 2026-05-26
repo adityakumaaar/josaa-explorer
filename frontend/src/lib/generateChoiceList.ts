@@ -83,11 +83,11 @@ const COLUMNS = [
   "Program",
   "Seat Type",
   "Gender",
-  "2025 HS",
-  "2025 OS",
-  "2025 AI",
+  "2025 OS/AI",
+  "Quota",
   "Pick",
   "Home State Eligible",
+  "2025 HS",
   "Confidence",
   "2024 Closing",
   "2023 Closing",
@@ -111,8 +111,10 @@ const REF_COLUMNS = [
   "2019 Closing",
 ] as const;
 
-const COL_WIDTHS_MAIN = [5, 50, 18, 45, 12, 12, 10, 10, 10, 8, 18, 11, 14, 14, 14, 14, 14];
-const COL_WIDTHS_REF = [5, 50, 18, 45, 12, 12, 30, 14, 14, 14, 14, 14];
+// S.No, Institute, State, Program, SeatType, Gender, OS/AI, Quota, Pick,
+// HS Eligible, 2025 HS, Confidence, 2024..2019
+const COL_WIDTHS_MAIN = [5, 50, 18, 45, 12, 14, 11, 7, 8, 18, 10, 11, 14, 14, 14, 14, 14];
+const COL_WIDTHS_REF = [5, 50, 18, 45, 12, 14, 30, 14, 14, 14, 14, 14];
 
 function buildMainSheet(rows: PivotRow[], headerInfo: (string | number)[][]) {
   const aoa: CellSpec[][] = [];
@@ -160,15 +162,15 @@ function buildMainSheet(rows: PivotRow[], headerInfo: (string | number)[][]) {
       styledCell(r.program, rowFill),
       styledCell(r.seat_type, rowFill),
       styledCell(r.gender, rowFill),
-      styledCell(r.hs_2025, rowFill),
-      styledCell(r.os_2025, rowFill),
-      styledCell(r.ai_2025, rowFill),
+      styledCell(r.osAi_2025, rowFill),
+      styledCell(r.osAiQuota ?? "", rowFill, { alignment: { horizontal: "center" } }),
       styledCell(pickLabel, rowFill, pickStyle),
       styledCell(
         r.homeStateEligible ? "YES" : "",
         rowFill,
         r.homeStateEligible ? { font: HS_BADGE_FONT, alignment: { horizontal: "center" } } : undefined,
       ),
+      styledCell(r.hs_2025, rowFill),
       styledCell(confCellValue, rowFill),
       ...REFERENCE_YEARS.map((yr) => styledCell(r.refByYear[yr] ?? null, rowFill)),
     ];
