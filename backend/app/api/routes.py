@@ -51,6 +51,8 @@ def search(req: SearchRequest, db: Session = Depends(get_db)):
         round_no=req.round_no,
         years=req.years,
         crl_rank=req.crl_rank,
+        min_rank=req.min_rank,
+        max_rank=req.max_rank,
     )
     results = [
         SearchResult(
@@ -62,6 +64,7 @@ def search(req: SearchRequest, db: Session = Depends(get_db)):
             seat_type=r["seat_type"],
             gender=r["gender"],
             confidence_score=r["confidence_score"],
+            has_2025=r.get("has_2025", False),
             latest_opening_rank=r.get("latest_opening_rank"),
             latest_closing_rank=r["latest_closing_rank"],
             year_eligibility={

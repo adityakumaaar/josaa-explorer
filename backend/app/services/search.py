@@ -22,9 +22,9 @@ PWD_SEAT_TYPES = {
     "ST": ["ST (PwD)", "ST-PwD"],
 }
 
-RECENT_YEARS = {2024, 2025}
-RECENT_WEIGHT = 2.0
-OLD_WEIGHT = 1.0
+# Confidence is computed from 2025 data only. Earlier years are still
+# attached to each result as `year_eligibility` for reference/display.
+PRIMARY_YEAR = 2025
 
 # Round-based scoring: earlier round eligibility = higher sub-score
 # If eligible in Round 1 → 1.0, Round 2 → 0.9, ..., Round 6 → 0.5
@@ -67,6 +67,8 @@ def search_colleges(
     round_no: int | None = None,
     years: list[int] | None = None,
     crl_rank: int | None = None,
+    min_rank: int | None = None,
+    max_rank: int | None = None,
 ) -> list[dict]:
     seat_types = list(CATEGORY_TO_SEAT_TYPE.get(category, ["OPEN"]))
     if pwd:
@@ -91,14 +93,23 @@ def search_colleges(
     max_rounds = dict(year_query.all())
     all_years_sorted = sorted(max_rounds.keys())
 
-    # Only fetch records where user could be eligible (biggest perf win)
-    min_rank = min(rank, crl_rank) if crl_rank else rank
-    query = db.query(ORCRRecord).filter(
+    # Closing-rank filter: explicit window if provided, else implicit
+    # "must be >= my rank" (i.e. user can plausibly qualify).
+    base_filters = [
         ORCRRecord.seat_type.in_(seat_types),
         ORCRRecord.gender.in_(gender_filter),
         ORCRRecord.is_preparatory == False,  # noqa: E712
-        ORCRRecord.closing_rank >= min_rank,
-    )
+    ]
+    if min_rank is not None or max_rank is not None:
+        if min_rank is not None:
+            base_filters.append(ORCRRecord.closing_rank >= min_rank)
+        if max_rank is not None:
+            base_filters.append(ORCRRecord.closing_rank <= max_rank)
+    else:
+        implicit_floor = min(rank, crl_rank) if crl_rank else rank
+        base_filters.append(ORCRRecord.closing_rank >= implicit_floor)
+
+    query = db.query(ORCRRecord).filter(*base_filters)
     if institute_types:
         query = query.filter(ORCRRecord.institute_type.in_(institute_types))
     if program_query:
@@ -134,35 +145,28 @@ def search_colleges(
 
         filtered_years = year_data
 
-        total_weight = 0.0
-        score = 0.0
-        year_eligibility = {}
-
         is_open_seat = seat_type == "OPEN" or seat_type == "OPEN (PwD)"
         effective_rank = crl_rank if (include_open and is_open_seat) else rank
 
+        # Build year_eligibility for ALL years (display/reference only).
+        year_eligibility: dict[str, dict] = {}
         for yr in all_years_sorted:
-            w = RECENT_WEIGHT if yr in RECENT_YEARS else OLD_WEIGHT
-            total_weight += w
-
             recs = filtered_years.get(yr, [])
             if not recs:
                 year_eligibility[str(yr)] = {
                     "eligible": False,
                     "closing_rank": None,
                     "round": max_rounds.get(yr, 0),
+                    "earliest_round": None,
                 }
                 continue
 
-            # Sort rounds ascending to find earliest eligible round
             recs_sorted = sorted(recs, key=lambda r: r.round)
             last_round_rec = recs_sorted[-1]
             eligible_in_last = (
                 last_round_rec.closing_rank is not None
                 and effective_rank <= last_round_rec.closing_rank
             )
-
-            # Find earliest round where eligible
             earliest_eligible_round = None
             for rec in recs_sorted:
                 if rec.closing_rank is not None and effective_rank <= rec.closing_rank:
@@ -176,16 +180,29 @@ def search_colleges(
                 "earliest_round": earliest_eligible_round,
             }
 
-            if earliest_eligible_round is not None:
-                round_factor = ROUND_SCORE.get(earliest_eligible_round, 0.4)
-                score += w * round_factor
+        # Confidence is computed exclusively from PRIMARY_YEAR (2025).
+        # If 2025 data is missing for this (college, program, quota),
+        # confidence is 0 and `has_2025` is False, but the row is still
+        # emitted so the UI/Excel can show prior-year reference data.
+        primary = year_eligibility.get(str(PRIMARY_YEAR), {})
+        has_primary = filtered_years.get(PRIMARY_YEAR) is not None and bool(filtered_years.get(PRIMARY_YEAR))
+        if has_primary:
+            earliest_round = primary.get("earliest_round")
+            if earliest_round is not None:
+                confidence = ROUND_SCORE.get(earliest_round, 0.4)
+            else:
+                confidence = 0.0
+        else:
+            confidence = 0.0
 
-        confidence = score / total_weight if total_weight > 0 else 0
+        # Note: SQL-level filters (closing_rank >= rank, or the rank window
+        # if provided) already drop records the user can't or doesn't want
+        # to see. Anything that survives to here is intentionally returned —
+        # including rows where the user is ineligible in 2025 (a reach pick
+        # surfaced via the rank window) or where 2025 data is absent (kept
+        # so the UI/Excel can show prior-year reference data).
 
-        if confidence == 0:
-            continue
-
-        # Use the last round of the latest year for display values
+        # Use the last round of the latest year with data for display values
         latest_year = max(filtered_years.keys())
         latest_recs = sorted(filtered_years[latest_year], key=lambda r: r.round)
         latest_rec = latest_recs[-1]
@@ -200,6 +217,7 @@ def search_colleges(
                 "seat_type": seat_type,
                 "gender": gen,
                 "confidence_score": round(confidence, 3),
+                "has_2025": has_primary,
                 "latest_opening_rank": latest_rec.opening_rank,
                 "latest_closing_rank": latest_rec.closing_rank,
                 "year_eligibility": year_eligibility,

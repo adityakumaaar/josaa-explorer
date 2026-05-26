@@ -5,10 +5,19 @@ import IndiaCollegeMap from "./map/IndiaCollegeMap";
 import { INSTITUTE_TYPES, INST_TYPE_COLORS } from "../lib/constants";
 import { API_BASE, SHOW_SENTIMENT } from "../lib/api";
 import { generateChoiceList } from "../lib/generateChoiceList";
+import {
+  pivotResults,
+  sortPivotByOsAi,
+  sortPivotByBest,
+  sortPivotByMatch,
+  sortPivotByName,
+  type PivotRow,
+} from "../lib/pivotResults";
 import type { SearchResponse, SearchResult, SearchParams } from "../lib/types";
 
 type SortKey = "match" | "closing" | "name";
-type ViewMode = "list" | "grouped" | "mindmap" | "map";
+type ViewMode = "list" | "grouped" | "table" | "mindmap" | "map";
+type QuotaTag = "HS" | "OS" | "AI";
 
 const PAGE_SIZE = 30;
 
@@ -31,6 +40,9 @@ export default function ResultsTable({ data, searchParams }: Props) {
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [showCount, setShowCount] = useState(PAGE_SIZE);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [quotaTags, setQuotaTags] = useState<Set<QuotaTag>>(new Set());
+  const [hsOnly, setHsOnly] = useState(false);
+  const [has2025Only, setHas2025Only] = useState(true);
 
   const allYears = useMemo(() => {
     const yrs = new Set<string>();
@@ -107,6 +119,57 @@ export default function ResultsTable({ data, searchParams }: Props) {
   const visible = filtered.slice(0, showCount);
   const hasMore = showCount < filtered.length;
 
+  // Pivoted rows (one per institute+program+seat_type+gender) for the Table view.
+  // We pivot from `filtered` so the existing institute-type filter applies.
+  const pivoted = useMemo<PivotRow[]>(() => {
+    if (viewMode !== "table") return [];
+    let rows = pivotResults(
+      filtered,
+      searchParams?.home_state ?? null,
+      data.rank_used,
+    );
+    if (has2025Only) rows = rows.filter((r) => r.has_2025);
+    if (hsOnly) rows = rows.filter((r) => r.homeStateEligible);
+    if (quotaTags.size > 0) {
+      rows = rows.filter((r) => {
+        if (quotaTags.has("HS") && r.hs_2025 != null) return true;
+        if (quotaTags.has("OS") && r.os_2025 != null) return true;
+        if (quotaTags.has("AI") && r.ai_2025 != null) return true;
+        return false;
+      });
+    }
+    switch (sort) {
+      case "match":
+        return sortPivotByMatch(rows);
+      case "closing":
+        return sortPivotByOsAi(rows);
+      case "name":
+        return sortPivotByName(rows);
+      default:
+        return sortPivotByBest(rows);
+    }
+  }, [
+    filtered,
+    viewMode,
+    searchParams?.home_state,
+    data.rank_used,
+    hsOnly,
+    has2025Only,
+    quotaTags,
+    sort,
+  ]);
+
+  const visiblePivoted = pivoted.slice(0, showCount);
+  const hasMorePivoted = showCount < pivoted.length;
+
+  const toggleQuotaTag = (q: QuotaTag) =>
+    setQuotaTags((prev) => {
+      const next = new Set(prev);
+      if (next.has(q)) next.delete(q);
+      else next.add(q);
+      return next;
+    });
+
   return (
     <div>
       {/* Top bar: counts + sort + group toggle */}
@@ -126,6 +189,7 @@ export default function ResultsTable({ data, searchParams }: Props) {
             [
               ["list", "List"],
               ["grouped", "Grouped"],
+              ["table", "Table"],
               ["mindmap", "Mind map"],
               ["map", "Map"],
             ] as [ViewMode, string][]
@@ -219,6 +283,75 @@ export default function ResultsTable({ data, searchParams }: Props) {
         })}
       </div>
 
+      {/* Table-view-specific filter chips */}
+      {viewMode === "table" && (
+        <div className="flex flex-wrap items-center gap-1.5 mb-4">
+          <span className="text-[11px] uppercase tracking-wider text-gray-400 mr-1">
+            Filter
+          </span>
+          <button
+            onClick={() => setHas2025Only((v) => !v)}
+            className={`px-2.5 py-1 rounded-full text-xs font-medium transition border
+              ${
+                has2025Only
+                  ? "border-transparent bg-blue-600 text-white"
+                  : "border-gray-300 bg-white text-gray-600 hover:border-gray-400"
+              }`}
+            title="Hide rows missing 2025 data"
+          >
+            2025 only
+          </button>
+          {searchParams?.home_state && (
+            <button
+              onClick={() => setHsOnly((v) => !v)}
+              className={`px-2.5 py-1 rounded-full text-xs font-medium transition border
+                ${
+                  hsOnly
+                    ? "border-transparent bg-amber-500 text-white"
+                    : "border-gray-300 bg-white text-gray-600 hover:border-gray-400"
+                }`}
+              title={`Show only rows where you qualify under HS quota (${searchParams.home_state})`}
+            >
+              Home state only
+            </button>
+          )}
+          <span className="w-px h-4 bg-gray-200 mx-1" />
+          <span className="text-[11px] uppercase tracking-wider text-gray-400 mr-1">
+            Quota
+          </span>
+          {(["HS", "OS", "AI"] as QuotaTag[]).map((q) => (
+            <button
+              key={q}
+              onClick={() => toggleQuotaTag(q)}
+              className={`px-2.5 py-1 rounded-full text-xs font-medium transition border
+                ${
+                  quotaTags.has(q)
+                    ? "border-transparent bg-gray-900 text-white"
+                    : "border-gray-300 bg-white text-gray-600 hover:border-gray-400"
+                }`}
+              title={`Show only rows with a 2025 ${q} closing rank`}
+            >
+              {q}
+            </button>
+          ))}
+          {(quotaTags.size > 0 || hsOnly || !has2025Only) && (
+            <button
+              onClick={() => {
+                setQuotaTags(new Set());
+                setHsOnly(false);
+                setHas2025Only(true);
+              }}
+              className="ml-1 px-2.5 py-1 rounded-full text-xs font-medium text-blue-600 hover:underline"
+            >
+              Reset
+            </button>
+          )}
+          <span className="ml-auto text-[11px] text-gray-400">
+            {pivoted.length} program{pivoted.length === 1 ? "" : "s"}
+          </span>
+        </div>
+      )}
+
       {/* Results */}
       {filtered.length === 0 ? (
         <div className="text-center py-12 text-gray-400">
@@ -232,6 +365,14 @@ export default function ResultsTable({ data, searchParams }: Props) {
         />
       ) : viewMode === "map" ? (
         <IndiaCollegeMap results={filtered} rankUsed={data.rank_used} />
+      ) : viewMode === "table" ? (
+        <PivotTable
+          rows={visiblePivoted}
+          rank={data.rank_used}
+          hasMore={hasMorePivoted}
+          remaining={pivoted.length - showCount}
+          onShowMore={() => setShowCount((c) => c + PAGE_SIZE)}
+        />
       ) : viewMode === "grouped" ? (
         <div className="space-y-2">
           {grouped.slice(0, showCount).map((group) => (
@@ -277,6 +418,138 @@ function getConfidence(score: number) {
   if (score >= 0.75) return { label: "HIGH", color: "text-emerald-600" };
   if (score >= 0.4) return { label: "MEDIUM", color: "text-amber-600" };
   return { label: "LOW", color: "text-red-500" };
+}
+
+interface PivotTableProps {
+  rows: PivotRow[];
+  rank: number;
+  hasMore: boolean;
+  remaining: number;
+  onShowMore: () => void;
+}
+
+function PivotTable({ rows, rank, hasMore, remaining, onShowMore }: PivotTableProps) {
+  if (rows.length === 0) {
+    return (
+      <div className="text-center py-12 text-gray-400 text-sm">
+        No programs match the current filters.
+      </div>
+    );
+  }
+  return (
+    <>
+      <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+        <table className="w-full text-[12px] sm:text-[13px]">
+          <thead className="bg-gray-50 border-b border-gray-200">
+            <tr className="text-left text-gray-500">
+              <th className="font-semibold px-2 py-2 whitespace-nowrap">#</th>
+              <th className="font-semibold px-2 py-2">Institute</th>
+              <th className="font-semibold px-2 py-2 whitespace-nowrap">State</th>
+              <th className="font-semibold px-2 py-2">Program</th>
+              <th className="font-semibold px-2 py-2 whitespace-nowrap">Seat / Gender</th>
+              <th className="font-semibold px-2 py-2 text-right whitespace-nowrap">2025 HS</th>
+              <th className="font-semibold px-2 py-2 text-right whitespace-nowrap">2025 OS</th>
+              <th className="font-semibold px-2 py-2 text-right whitespace-nowrap">2025 AI</th>
+              <th className="font-semibold px-2 py-2 text-center whitespace-nowrap">HS</th>
+              <th className="font-semibold px-2 py-2 text-right whitespace-nowrap">Confidence</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => {
+              const typeColor = INST_TYPE_COLORS[r.institute_type] || "bg-gray-100 text-gray-800";
+              const conf = getConfidence(r.confidence);
+              return (
+                <tr
+                  key={`${r.institute}|${r.program}|${r.seat_type}|${r.gender}`}
+                  className={`border-b border-gray-100 last:border-b-0 ${
+                    r.homeStateEligible ? "bg-amber-50" : i % 2 ? "bg-white" : "bg-gray-50/30"
+                  }`}
+                >
+                  <td className="px-2 py-2 text-gray-400 align-top">{i + 1}</td>
+                  <td className="px-2 py-2 align-top">
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <span className={`text-[9px] font-semibold px-1 rounded ${typeColor}`}>
+                        {r.institute_type}
+                      </span>
+                    </div>
+                    <div className="font-medium text-gray-900 leading-tight">{r.institute}</div>
+                  </td>
+                  <td className="px-2 py-2 text-gray-600 align-top whitespace-nowrap">
+                    {r.state ?? "—"}
+                  </td>
+                  <td className="px-2 py-2 text-gray-700 align-top">{r.program}</td>
+                  <td className="px-2 py-2 text-[11px] text-gray-500 align-top whitespace-nowrap">
+                    <div>{r.seat_type}</div>
+                    <div className="text-gray-400">{shortGender(r.gender)}</div>
+                  </td>
+                  <RankCell value={r.hs_2025} eligible={r.eligibleHS} rank={rank} />
+                  <RankCell value={r.os_2025} eligible={r.eligibleOS} rank={rank} />
+                  <RankCell value={r.ai_2025} eligible={r.eligibleAI} rank={rank} />
+                  <td className="px-2 py-2 text-center align-top">
+                    {r.homeStateEligible ? (
+                      <span className="text-[10px] font-bold bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded">
+                        YES
+                      </span>
+                    ) : (
+                      <span className="text-gray-300">—</span>
+                    )}
+                  </td>
+                  <td className={`px-2 py-2 text-right font-semibold align-top whitespace-nowrap ${conf.color}`}>
+                    {r.has_2025 ? `${Math.round(r.confidence * 100)}%` : <span className="text-gray-400 font-normal">no '25</span>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {hasMore && (
+        <div className="text-center mt-5">
+          <button
+            onClick={onShowMore}
+            className="px-5 py-2 rounded-lg border border-gray-300 text-sm font-medium
+                       text-gray-700 hover:bg-gray-50 transition"
+          >
+            Show more ({remaining} remaining)
+          </button>
+        </div>
+      )}
+    </>
+  );
+}
+
+function RankCell({
+  value,
+  eligible,
+  rank,
+}: {
+  value: number | null;
+  eligible: boolean;
+  rank: number;
+}) {
+  if (value == null) {
+    return <td className="px-2 py-2 text-right text-gray-300 align-top">—</td>;
+  }
+  const margin = value - rank;
+  const tone = eligible
+    ? "text-emerald-700"
+    : margin > -2000
+      ? "text-amber-600"
+      : "text-gray-500";
+  return (
+    <td className={`px-2 py-2 text-right align-top tabular-nums ${tone}`}>
+      <div>{value.toLocaleString()}</div>
+      <div className="text-[10px] text-gray-400">
+        {margin >= 0 ? `+${margin.toLocaleString()}` : margin.toLocaleString()}
+      </div>
+    </td>
+  );
+}
+
+function shortGender(g: string): string {
+  if (g === "Gender-Neutral") return "Gender-Neutral";
+  if (g.startsWith("Female")) return "Female-only";
+  return g;
 }
 
 interface SentimentCategory {

@@ -678,17 +678,27 @@ class TestConfidenceScoreProperties:
         )
 
     def test_confidence_between_0_and_1(self, db):
-        """All returned results should have confidence in (0, 1]."""
+        """All returned results should have confidence in [0, 1].
+
+        Confidence is computed from 2025 data only. Rows missing 2025 data
+        legitimately have confidence_score == 0 (they are kept around so the
+        Excel/UI can show prior-year reference data) — they should still be
+        bounded in [0, 1] and consistent with `has_2025`.
+        """
         results = search_colleges(
             db=db, rank=33157, category="General",
             gender="Male", home_state="Assam",
         )
 
         for r in results:
-            assert 0 < r["confidence_score"] <= 1.0, (
-                f"Confidence must be in (0, 1.0], got {r['confidence_score']} "
+            assert 0 <= r["confidence_score"] <= 1.0, (
+                f"Confidence must be in [0, 1.0], got {r['confidence_score']} "
                 f"for {r['institute']} - {r['program']} ({r['quota']})"
             )
+            if r.get("has_2025") is False:
+                assert r["confidence_score"] == 0, (
+                    "Rows without 2025 data must have confidence_score == 0"
+                )
 
 
 # ===========================================================================
@@ -877,6 +887,160 @@ class TestDetailEndpoint:
         )
         assert hs_r1_2025 == 34934, f"HS R1 2025 should be 34934, got {hs_r1_2025}"
         assert os_r1_2025 == 15294, f"OS R1 2025 should be 15294, got {os_r1_2025}"
+
+
+class TestRankWindowAndPrimaryYear:
+    """
+    New behaviour shipped alongside the choice-list rework:
+
+    1. Confidence is computed from 2025 data only; older years stay attached
+       as `year_eligibility` for reference.
+    2. `has_2025` flag is added so callers can distinguish "no 2025 data" from
+       "ineligible in 2025".
+    3. `min_rank` / `max_rank` form an explicit closing-rank window and replace
+       the implicit `closing_rank >= rank` filter when set. This is what lets
+       a user with rank 33157 also see colleges with closing rank 18068 (a
+       reach pick) by passing a window that brackets both.
+    """
+
+    def test_has_2025_flag_present_for_rows_with_2025_data(self, db):
+        """Rows with 2025 data must report has_2025=True and confidence > 0."""
+        results = search_colleges(
+            db=db, rank=33157, category="General",
+            gender="Male", home_state="Assam",
+            years=[2025],
+        )
+
+        assert len(results) > 0
+        for r in results:
+            assert r.get("has_2025") is True, (
+                "When year filter is [2025], every returned row must have 2025 data"
+            )
+            assert r["confidence_score"] > 0, (
+                "2025-eligible rows must have confidence > 0"
+            )
+
+    def test_confidence_uses_only_2025_round_score(self, db):
+        """Confidence equals ROUND_SCORE[earliest_round_in_2025], independent of older years.
+
+        DB: NIT Silchar ECE HS 2025 R1=34934, R2=38288, R6=40328.
+        - Rank 30000 → earliest 2025 round = 1 → confidence = 1.0
+        - Rank 36000 → earliest 2025 round = 2 → confidence = 0.9
+        """
+        results_a = search_colleges(
+            db=db, rank=30000, category="General",
+            gender="Male", home_state="Assam",
+        )
+        results_b = search_colleges(
+            db=db, rank=36000, category="General",
+            gender="Male", home_state="Assam",
+        )
+
+        a = find_results(
+            results_a,
+            "National Institute of Technology, Silchar",
+            "Electronics and Communication Engineering (4 Years",
+            quota="HS",
+        )
+        b = find_results(
+            results_b,
+            "National Institute of Technology, Silchar",
+            "Electronics and Communication Engineering (4 Years",
+            quota="HS",
+        )
+
+        assert len(a) == 1 and len(b) == 1
+        assert a[0]["confidence_score"] == 1.0, (
+            f"Rank 30000 → 2025 R1 → expected confidence 1.0, got {a[0]['confidence_score']}"
+        )
+        assert b[0]["confidence_score"] == 0.9, (
+            f"Rank 36000 → 2025 R2 → expected confidence 0.9, got {b[0]['confidence_score']}"
+        )
+
+    def test_year_eligibility_still_populated_for_all_years(self, db):
+        """Older years remain in year_eligibility even though they don't drive confidence."""
+        results = search_colleges(
+            db=db, rank=33157, category="General",
+            gender="Male", home_state="Assam",
+        )
+
+        sample = find_results(
+            results,
+            "National Institute of Technology, Silchar",
+            "Electronics and Communication Engineering (4 Years",
+            quota="HS",
+        )
+        assert len(sample) >= 1
+        ye = sample[0]["year_eligibility"]
+        for yr in ("2025", "2024", "2023", "2022", "2021"):
+            assert yr in ye, f"Year {yr} should be present in year_eligibility for reference"
+
+    def test_rank_window_includes_reach_college(self, db):
+        """A closing rank below the user's rank should appear when inside the window.
+
+        DB: NIT Silchar ECE OS 2025 R6 closing = 18068.
+        Without a window, rank 33157 would NOT see this row (closing 18068 < 33157).
+        With min_rank=15000, max_rank=20000 it must appear, because the window
+        explicitly asks for that closing-rank band as a reach pick.
+        """
+        results = search_colleges(
+            db=db, rank=33157, category="General",
+            gender="Male", home_state="Assam",
+            min_rank=15000, max_rank=20000,
+            years=[2025],
+        )
+
+        os_match = find_results(
+            results,
+            "National Institute of Technology, Silchar",
+            "Electronics and Communication Engineering (4 Years",
+            quota="OS",
+        )
+        assert len(os_match) >= 1, (
+            "Rank window 15000-20000 should surface NIT Silchar ECE OS "
+            "(2025 R6 closing 18068) as a reach pick for rank 33157."
+        )
+        assert 15000 <= os_match[0]["latest_closing_rank"] <= 20000
+
+    def test_rank_window_excludes_outside_band(self, db):
+        """Closing ranks outside the window must be filtered out.
+
+        DB: NIT Warangal CSE OS 2025 R6 closing = 2409. With a window of
+        15000-20000 this row's closing rank is below the band and must be
+        excluded — even though rank 33157 would normally see it inside an
+        unbounded "reach" view.
+        """
+        results = search_colleges(
+            db=db, rank=33157, category="General",
+            gender="Male", home_state="Maharashtra",
+            min_rank=15000, max_rank=20000,
+            years=[2025],
+        )
+
+        warangal_cse_os = find_results(
+            results,
+            "National Institute of Technology, Warangal",
+            "Computer Science and Engineering (4 Years",
+            quota="OS",
+        )
+        assert len(warangal_cse_os) == 0, (
+            "Rank window 15000-20000 must exclude closing rank 2409 (NIT Warangal CSE OS)."
+        )
+
+    def test_rank_window_min_only(self, db):
+        """min_rank-only narrows the floor without changing the upper bound."""
+        results = search_colleges(
+            db=db, rank=33157, category="General",
+            gender="Male", home_state="Assam",
+            min_rank=40000,
+            years=[2025],
+        )
+        assert len(results) > 0
+        for r in results:
+            cr = r["latest_closing_rank"]
+            assert cr is None or cr >= 40000, (
+                f"min_rank=40000 should drop closing ranks below it, got {cr}"
+            )
 
 
 class TestInstituteTypeFiltering:

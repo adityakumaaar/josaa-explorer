@@ -24,6 +24,9 @@ export default function SearchForm({ onSearch, loading, initialParams }: Props) 
   const [programQuery, setProgramQuery] = useState(initialParams?.program_query ?? "");
   const [roundNo, setRoundNo] = useState<number | "">(initialParams?.round_no ?? "");
   const [selectedYears, setSelectedYears] = useState<number[]>(initialParams?.years ?? []);
+  const [minRank, setMinRank] = useState(initialParams?.min_rank?.toString() ?? "");
+  const [maxRank, setMaxRank] = useState(initialParams?.max_rank?.toString() ?? "");
+  const [windowError, setWindowError] = useState<string | null>(null);
   const [stateOpen, setStateOpen] = useState(false);
   const [stateFilter, setStateFilter] = useState("");
   const stateRef = useRef<HTMLDivElement>(null);
@@ -101,6 +104,19 @@ export default function SearchForm({ onSearch, loading, initialParams }: Props) 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!rank || !homeState) return;
+
+    const minRankNum = minRank ? parseInt(minRank, 10) : undefined;
+    const maxRankNum = maxRank ? parseInt(maxRank, 10) : undefined;
+    if (
+      minRankNum !== undefined &&
+      maxRankNum !== undefined &&
+      minRankNum > maxRankNum
+    ) {
+      setWindowError("Min rank must be ≤ max rank");
+      return;
+    }
+    setWindowError(null);
+
     const branchKeywords = selectedBranches.length > 0
       ? BRANCH_TYPES.filter((b) => selectedBranches.includes(b.label)).flatMap((b) => b.keywords)
       : undefined;
@@ -117,6 +133,8 @@ export default function SearchForm({ onSearch, loading, initialParams }: Props) 
       college_states: selectedCollegeStates.length > 0 ? selectedCollegeStates : undefined,
       round_no: roundNo ? roundNo : undefined,
       years: selectedYears.length > 0 ? selectedYears : undefined,
+      min_rank: minRankNum,
+      max_rank: maxRankNum,
     });
   };
 
@@ -167,6 +185,43 @@ export default function SearchForm({ onSearch, loading, initialParams }: Props) 
           </p>
         </div>
       )}
+
+      {/* Rank Window */}
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1.5">
+          Rank Window
+          <span className="text-gray-400 font-normal ml-1">(optional)</span>
+        </label>
+        <div className="flex gap-2">
+          <input
+            type="number"
+            min={1}
+            value={minRank}
+            onChange={(e) => setMinRank(e.target.value)}
+            placeholder="Min closing rank"
+            className="w-1/2 rounded-lg border border-gray-300 px-3 py-2 text-sm
+                       focus:border-blue-500 focus:ring-2 focus:ring-blue-200
+                       outline-none transition"
+          />
+          <input
+            type="number"
+            min={1}
+            value={maxRank}
+            onChange={(e) => setMaxRank(e.target.value)}
+            placeholder="Max closing rank"
+            className="w-1/2 rounded-lg border border-gray-300 px-3 py-2 text-sm
+                       focus:border-blue-500 focus:ring-2 focus:ring-blue-200
+                       outline-none transition"
+          />
+        </div>
+        <p className="text-[11px] text-gray-400 mt-1">
+          Show colleges with 2025 closing rank in this range. Leave blank to use
+          your rank as the upper bound.
+        </p>
+        {windowError && (
+          <p className="text-[11px] text-red-600 mt-1">{windowError}</p>
+        )}
+      </div>
 
       {/* Category */}
       <div>

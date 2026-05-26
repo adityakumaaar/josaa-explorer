@@ -14,6 +14,7 @@ export interface SearchResult {
   seat_type: string;
   gender: string;
   confidence_score: number;
+  has_2025?: boolean;
   latest_opening_rank: number | null;
   latest_closing_rank: number | null;
   year_eligibility: Record<string, YearEligibility>;
@@ -39,4 +40,6 @@ export interface SearchParams {
   college_states?: string[];
   round_no?: number;
   years?: number[];
+  min_rank?: number;
+  max_rank?: number;
 }

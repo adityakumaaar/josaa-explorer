@@ -17,6 +17,8 @@ export function encodeSearchParams(params: SearchParams): string {
     p.set("branches", params.branch_keywords.join(","));
   if (params.college_states?.length)
     p.set("cstates", params.college_states.join(","));
+  if (params.min_rank) p.set("minR", String(params.min_rank));
+  if (params.max_rank) p.set("maxR", String(params.max_rank));
   return p.toString();
 }
 
@@ -57,6 +59,12 @@ export function decodeSearchParams(search: string): SearchParams | null {
 
   const cstates = p.get("cstates");
   if (cstates) parsed.college_states = cstates.split(",");
+
+  const minR = p.get("minR");
+  if (minR) parsed.min_rank = parseInt(minR, 10);
+
+  const maxR = p.get("maxR");
+  if (maxR) parsed.max_rank = parseInt(maxR, 10);
 
   return parsed;
 }

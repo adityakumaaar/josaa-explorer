@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class SearchRequest(BaseModel):
@@ -26,6 +26,24 @@ class SearchRequest(BaseModel):
     years: list[int] | None = Field(
         default=None, description="Years to include; defaults to all available"
     )
+    min_rank: int | None = Field(
+        default=None, gt=0,
+        description="Lower bound (inclusive) of closing-rank window. When set with max_rank, replaces the implicit 'closing_rank >= rank' filter.",
+    )
+    max_rank: int | None = Field(
+        default=None, gt=0,
+        description="Upper bound (inclusive) of closing-rank window.",
+    )
+
+    @model_validator(mode="after")
+    def _validate_window(self) -> "SearchRequest":
+        if (
+            self.min_rank is not None
+            and self.max_rank is not None
+            and self.min_rank > self.max_rank
+        ):
+            raise ValueError("min_rank must be <= max_rank")
+        return self
 
 
 class YearEligibility(BaseModel):
@@ -44,6 +62,7 @@ class SearchResult(BaseModel):
     seat_type: str
     gender: str
     confidence_score: float
+    has_2025: bool = False
     latest_opening_rank: int | None
     latest_closing_rank: int | None
     year_eligibility: dict[str, YearEligibility]
