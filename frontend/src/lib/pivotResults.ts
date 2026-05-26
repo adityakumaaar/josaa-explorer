@@ -8,6 +8,13 @@ export const REFERENCE_YEARS = ["2024", "2023", "2022", "2021", "2019"] as const
 // reference values to keep the column semantically consistent across years.
 export const QUOTA_PREF: ReadonlyArray<string> = ["OS", "AI", "HS", "GO", "JK", "LA"];
 
+export type PickType = "safe" | "target" | "reach" | "noData";
+
+// A row counts as SAFE when the user's rank clears the closing rank by at
+// least this margin (in any eligible quota). Below this margin but still
+// eligible -> TARGET. Not eligible but has 2025 data -> REACH.
+export const SAFE_MARGIN = 3000;
+
 export interface PivotRow {
   institute: string;
   institute_type: string;
@@ -28,6 +35,14 @@ export interface PivotRow {
   eligibleHS: boolean;
   eligibleOS: boolean;
   eligibleAI: boolean;
+  // Pick classification used by both the Table view and the Excel writer so
+  // that "reach" rows surfaced via the rank window are labelled, not flagged
+  // as 0% confidence.
+  pickType: PickType;
+  // Best margin (closing - rank) across eligible quotas. Positive when the
+  // user clears the closing rank, negative for reach picks, null for rows
+  // with no 2025 data.
+  bestMargin: number | null;
 }
 
 function pickRefClosing(
@@ -96,6 +111,33 @@ export function pivotResults(
     const isEligible = (close: number | null) =>
       close != null && rankUsed <= close;
 
+    const eligibleHS = isEligible(hs_2025);
+    const eligibleOS = isEligible(os_2025);
+    const eligibleAI = isEligible(ai_2025);
+
+    // bestMargin = max(closing - rankUsed) across quotas with 2025 data.
+    // Positive => user clears the closing rank (eligible).
+    // Negative => reach (closing < rank).
+    let bestMargin: number | null = null;
+    for (const close of [hs_2025, os_2025, ai_2025]) {
+      if (close == null) continue;
+      const margin = close - rankUsed;
+      if (bestMargin == null || margin > bestMargin) bestMargin = margin;
+    }
+
+    let pickType: PickType;
+    if (!has_2025) {
+      pickType = "noData";
+    } else if (bestMargin == null) {
+      pickType = "noData";
+    } else if (bestMargin >= SAFE_MARGIN) {
+      pickType = "safe";
+    } else if (bestMargin >= 0) {
+      pickType = "target";
+    } else {
+      pickType = "reach";
+    }
+
     rows.push({
       institute: head.institute,
       institute_type: head.institute_type,
@@ -110,9 +152,11 @@ export function pivotResults(
       refByYear,
       confidence,
       homeStateEligible,
-      eligibleHS: isEligible(hs_2025),
-      eligibleOS: isEligible(os_2025),
-      eligibleAI: isEligible(ai_2025),
+      eligibleHS,
+      eligibleOS,
+      eligibleAI,
+      pickType,
+      bestMargin,
     });
   }
   return rows;
@@ -160,4 +204,73 @@ export function sortPivotByName(rows: PivotRow[]): PivotRow[] {
       a.institute.localeCompare(b.institute) ||
       a.program.localeCompare(b.program),
   );
+}
+
+/** Columns the Table view supports click-to-sort on. */
+export type SortColumn =
+  | "institute"
+  | "state"
+  | "program"
+  | "seat_type"
+  | "hs_2025"
+  | "os_2025"
+  | "ai_2025"
+  | "pickType"
+  | "confidence";
+
+export type SortDir = "asc" | "desc";
+
+const PICK_ORDER: Record<PickType, number> = {
+  safe: 0,
+  target: 1,
+  reach: 2,
+  noData: 3,
+};
+
+function compareForColumn(a: PivotRow, b: PivotRow, col: SortColumn): number {
+  switch (col) {
+    case "institute":
+      return a.institute.localeCompare(b.institute);
+    case "state":
+      return (a.state ?? "").localeCompare(b.state ?? "");
+    case "program":
+      return a.program.localeCompare(b.program);
+    case "seat_type":
+      return (
+        a.seat_type.localeCompare(b.seat_type) ||
+        a.gender.localeCompare(b.gender)
+      );
+    case "hs_2025":
+      return orderKey(a.hs_2025) - orderKey(b.hs_2025);
+    case "os_2025":
+      return orderKey(a.os_2025) - orderKey(b.os_2025);
+    case "ai_2025":
+      return orderKey(a.ai_2025) - orderKey(b.ai_2025);
+    case "pickType":
+      return PICK_ORDER[a.pickType] - PICK_ORDER[b.pickType];
+    case "confidence":
+      return a.confidence - b.confidence;
+  }
+}
+
+/**
+ * Click-to-sort for the Table view. Stable on ties via (OS asc, institute,
+ * program) so toggling direction on one column doesn't shuffle unrelated rows.
+ */
+export function sortPivotBy(
+  rows: PivotRow[],
+  column: SortColumn,
+  dir: SortDir,
+): PivotRow[] {
+  const sign = dir === "asc" ? 1 : -1;
+  return [...rows].sort((a, b) => {
+    const primary = compareForColumn(a, b, column) * sign;
+    if (primary !== 0) return primary;
+    const tieOs = orderKey(a.os_2025) - orderKey(b.os_2025);
+    if (tieOs !== 0) return tieOs;
+    return (
+      a.institute.localeCompare(b.institute) ||
+      a.program.localeCompare(b.program)
+    );
+  });
 }

@@ -11,6 +11,14 @@ const HEADER_FILL = { fgColor: { rgb: "1F2937" } };
 const HEADER_FONT = { bold: true, color: { rgb: "FFFFFF" } };
 const HS_ROW_FILL = { fgColor: { rgb: "FFFCE8" } };
 const HS_BADGE_FONT = { bold: true, color: { rgb: "92400E" } };
+
+// Pick-type chip styling (matches the UI Table view).
+const SAFE_FILL = { fgColor: { rgb: "DCFCE7" } };
+const SAFE_FONT = { bold: true, color: { rgb: "166534" } };
+const TARGET_FILL = { fgColor: { rgb: "FEF3C7" } };
+const TARGET_FONT = { bold: true, color: { rgb: "92400E" } };
+const REACH_FILL = { fgColor: { rgb: "DBEAFE" } };
+const REACH_FONT = { bold: true, color: { rgb: "1E40AF" } };
 const BORDER = {
   top: { style: "thin", color: { rgb: "E5E7EB" } },
   bottom: { style: "thin", color: { rgb: "E5E7EB" } },
@@ -78,6 +86,7 @@ const COLUMNS = [
   "2025 HS",
   "2025 OS",
   "2025 AI",
+  "Pick",
   "Home State Eligible",
   "Confidence",
   "2024 Closing",
@@ -102,7 +111,7 @@ const REF_COLUMNS = [
   "2019 Closing",
 ] as const;
 
-const COL_WIDTHS_MAIN = [5, 50, 18, 45, 12, 12, 10, 10, 10, 18, 11, 14, 14, 14, 14, 14];
+const COL_WIDTHS_MAIN = [5, 50, 18, 45, 12, 12, 10, 10, 10, 8, 18, 11, 14, 14, 14, 14, 14];
 const COL_WIDTHS_REF = [5, 50, 18, 45, 12, 12, 30, 14, 14, 14, 14, 14];
 
 function buildMainSheet(rows: PivotRow[], headerInfo: (string | number)[][]) {
@@ -122,6 +131,28 @@ function buildMainSheet(rows: PivotRow[], headerInfo: (string | number)[][]) {
 
   rows.forEach((r, i) => {
     const rowFill = r.homeStateEligible ? { fill: HS_ROW_FILL } : undefined;
+
+    let pickLabel = "";
+    let pickStyle: Record<string, unknown> | undefined;
+    if (r.pickType === "safe") {
+      pickLabel = "SAFE";
+      pickStyle = { fill: SAFE_FILL, font: SAFE_FONT, alignment: { horizontal: "center" } };
+    } else if (r.pickType === "target") {
+      pickLabel = "TARGET";
+      pickStyle = { fill: TARGET_FILL, font: TARGET_FONT, alignment: { horizontal: "center" } };
+    } else if (r.pickType === "reach") {
+      pickLabel = "REACH";
+      pickStyle = { fill: REACH_FILL, font: REACH_FONT, alignment: { horizontal: "center" } };
+    }
+
+    // Confidence cell: only meaningful for SAFE/TARGET. Reach picks show
+    // "Reach" instead of "0%" so the user isn't misled into thinking the row
+    // is broken (it's a deliberate window-included reach pick).
+    let confCellValue: string;
+    if (r.pickType === "noData") confCellValue = "";
+    else if (r.pickType === "reach") confCellValue = "Reach";
+    else confCellValue = `${Math.round(r.confidence * 100)}%`;
+
     const cells: CellSpec[] = [
       styledCell(i + 1, rowFill),
       styledCell(r.institute, rowFill),
@@ -132,12 +163,13 @@ function buildMainSheet(rows: PivotRow[], headerInfo: (string | number)[][]) {
       styledCell(r.hs_2025, rowFill),
       styledCell(r.os_2025, rowFill),
       styledCell(r.ai_2025, rowFill),
+      styledCell(pickLabel, rowFill, pickStyle),
       styledCell(
         r.homeStateEligible ? "YES" : "",
         rowFill,
         r.homeStateEligible ? { font: HS_BADGE_FONT, alignment: { horizontal: "center" } } : undefined,
       ),
-      styledCell(`${Math.round(r.confidence * 100)}%`, rowFill),
+      styledCell(confCellValue, rowFill),
       ...REFERENCE_YEARS.map((yr) => styledCell(r.refByYear[yr] ?? null, rowFill)),
     ];
     aoa.push(cells);

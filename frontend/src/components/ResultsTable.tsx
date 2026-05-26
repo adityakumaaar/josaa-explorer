@@ -7,11 +7,11 @@ import { API_BASE, SHOW_SENTIMENT } from "../lib/api";
 import { generateChoiceList } from "../lib/generateChoiceList";
 import {
   pivotResults,
-  sortPivotByOsAi,
-  sortPivotByBest,
-  sortPivotByMatch,
-  sortPivotByName,
+  sortPivotBy,
   type PivotRow,
+  type PickType,
+  type SortColumn,
+  type SortDir,
 } from "../lib/pivotResults";
 import type { SearchResponse, SearchResult, SearchParams } from "../lib/types";
 
@@ -43,6 +43,10 @@ export default function ResultsTable({ data, searchParams }: Props) {
   const [quotaTags, setQuotaTags] = useState<Set<QuotaTag>>(new Set());
   const [hsOnly, setHsOnly] = useState(false);
   const [has2025Only, setHas2025Only] = useState(true);
+  // Table view click-to-sort state. Default = 2025 OS ascending so the
+  // rank-window shows reach -> safe top-to-bottom (matches the Excel writer).
+  const [tableSortCol, setTableSortCol] = useState<SortColumn>("os_2025");
+  const [tableSortDir, setTableSortDir] = useState<SortDir>("asc");
 
   const allYears = useMemo(() => {
     const yrs = new Set<string>();
@@ -138,16 +142,7 @@ export default function ResultsTable({ data, searchParams }: Props) {
         return false;
       });
     }
-    switch (sort) {
-      case "match":
-        return sortPivotByMatch(rows);
-      case "closing":
-        return sortPivotByOsAi(rows);
-      case "name":
-        return sortPivotByName(rows);
-      default:
-        return sortPivotByBest(rows);
-    }
+    return sortPivotBy(rows, tableSortCol, tableSortDir);
   }, [
     filtered,
     viewMode,
@@ -156,8 +151,21 @@ export default function ResultsTable({ data, searchParams }: Props) {
     hsOnly,
     has2025Only,
     quotaTags,
-    sort,
+    tableSortCol,
+    tableSortDir,
   ]);
+
+  const onSortColumn = (col: SortColumn) => {
+    if (tableSortCol === col) {
+      setTableSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setTableSortCol(col);
+      // Default direction per column: closing-rank/confidence/pick-type style
+      // columns lead with ascending; text columns also start ascending.
+      setTableSortDir("asc");
+    }
+    setShowCount(PAGE_SIZE);
+  };
 
   const visiblePivoted = pivoted.slice(0, showCount);
   const hasMorePivoted = showCount < pivoted.length;
@@ -222,29 +230,31 @@ export default function ResultsTable({ data, searchParams }: Props) {
           </button>
         )}
 
-        {/* Sort */}
-        <div className="flex items-center gap-1 text-[11px] sm:text-xs">
-          {(
-            [
-              ["match", "Best match"],
-              ["closing", "Closing rank"],
-              ["name", "Name"],
-            ] as [SortKey, string][]
-          ).map(([key, label]) => (
-            <button
-              key={key}
-              onClick={() => setSort(key)}
-              className={`px-2.5 py-1 rounded-full transition
-                ${
-                  sort === key
-                    ? "bg-gray-900 text-white"
-                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        {/* Sort (hidden in Table view -- column headers there are click-to-sort) */}
+        {viewMode !== "table" && (
+          <div className="flex items-center gap-1 text-[11px] sm:text-xs">
+            {(
+              [
+                ["match", "Best match"],
+                ["closing", "Closing rank"],
+                ["name", "Name"],
+              ] as [SortKey, string][]
+            ).map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => setSort(key)}
+                className={`px-2.5 py-1 rounded-full transition
+                  ${
+                    sort === key
+                      ? "bg-gray-900 text-white"
+                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Type filter chips */}
@@ -372,6 +382,9 @@ export default function ResultsTable({ data, searchParams }: Props) {
           hasMore={hasMorePivoted}
           remaining={pivoted.length - showCount}
           onShowMore={() => setShowCount((c) => c + PAGE_SIZE)}
+          sortCol={tableSortCol}
+          sortDir={tableSortDir}
+          onSort={onSortColumn}
         />
       ) : viewMode === "grouped" ? (
         <div className="space-y-2">
@@ -426,9 +439,21 @@ interface PivotTableProps {
   hasMore: boolean;
   remaining: number;
   onShowMore: () => void;
+  sortCol: SortColumn;
+  sortDir: SortDir;
+  onSort: (col: SortColumn) => void;
 }
 
-function PivotTable({ rows, rank, hasMore, remaining, onShowMore }: PivotTableProps) {
+function PivotTable({
+  rows,
+  rank,
+  hasMore,
+  remaining,
+  onShowMore,
+  sortCol,
+  sortDir,
+  onSort,
+}: PivotTableProps) {
   if (rows.length === 0) {
     return (
       <div className="text-center py-12 text-gray-400 text-sm">
@@ -443,15 +468,82 @@ function PivotTable({ rows, rank, hasMore, remaining, onShowMore }: PivotTablePr
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr className="text-left text-gray-500">
               <th className="font-semibold px-2 py-2 whitespace-nowrap">#</th>
-              <th className="font-semibold px-2 py-2">Institute</th>
-              <th className="font-semibold px-2 py-2 whitespace-nowrap">State</th>
-              <th className="font-semibold px-2 py-2">Program</th>
-              <th className="font-semibold px-2 py-2 whitespace-nowrap">Seat / Gender</th>
-              <th className="font-semibold px-2 py-2 text-right whitespace-nowrap">2025 HS</th>
-              <th className="font-semibold px-2 py-2 text-right whitespace-nowrap">2025 OS</th>
-              <th className="font-semibold px-2 py-2 text-right whitespace-nowrap">2025 AI</th>
+              <SortableTh
+                label="Institute"
+                col="institute"
+                sortCol={sortCol}
+                sortDir={sortDir}
+                onSort={onSort}
+              />
+              <SortableTh
+                label="State"
+                col="state"
+                sortCol={sortCol}
+                sortDir={sortDir}
+                onSort={onSort}
+                className="whitespace-nowrap"
+              />
+              <SortableTh
+                label="Program"
+                col="program"
+                sortCol={sortCol}
+                sortDir={sortDir}
+                onSort={onSort}
+              />
+              <SortableTh
+                label="Seat / Gender"
+                col="seat_type"
+                sortCol={sortCol}
+                sortDir={sortDir}
+                onSort={onSort}
+                className="whitespace-nowrap"
+              />
+              <SortableTh
+                label="2025 HS"
+                col="hs_2025"
+                sortCol={sortCol}
+                sortDir={sortDir}
+                onSort={onSort}
+                align="right"
+                className="whitespace-nowrap"
+              />
+              <SortableTh
+                label="2025 OS"
+                col="os_2025"
+                sortCol={sortCol}
+                sortDir={sortDir}
+                onSort={onSort}
+                align="right"
+                className="whitespace-nowrap"
+              />
+              <SortableTh
+                label="2025 AI"
+                col="ai_2025"
+                sortCol={sortCol}
+                sortDir={sortDir}
+                onSort={onSort}
+                align="right"
+                className="whitespace-nowrap"
+              />
+              <SortableTh
+                label="Pick"
+                col="pickType"
+                sortCol={sortCol}
+                sortDir={sortDir}
+                onSort={onSort}
+                align="center"
+                className="whitespace-nowrap"
+              />
               <th className="font-semibold px-2 py-2 text-center whitespace-nowrap">HS</th>
-              <th className="font-semibold px-2 py-2 text-right whitespace-nowrap">Confidence</th>
+              <SortableTh
+                label="Confidence"
+                col="confidence"
+                sortCol={sortCol}
+                sortDir={sortDir}
+                onSort={onSort}
+                align="right"
+                className="whitespace-nowrap"
+              />
             </tr>
           </thead>
           <tbody>
@@ -486,6 +578,9 @@ function PivotTable({ rows, rank, hasMore, remaining, onShowMore }: PivotTablePr
                   <RankCell value={r.os_2025} eligible={r.eligibleOS} rank={rank} />
                   <RankCell value={r.ai_2025} eligible={r.eligibleAI} rank={rank} />
                   <td className="px-2 py-2 text-center align-top">
+                    <PickBadge pick={r.pickType} margin={r.bestMargin} />
+                  </td>
+                  <td className="px-2 py-2 text-center align-top">
                     {r.homeStateEligible ? (
                       <span className="text-[10px] font-bold bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded">
                         YES
@@ -494,8 +589,14 @@ function PivotTable({ rows, rank, hasMore, remaining, onShowMore }: PivotTablePr
                       <span className="text-gray-300">—</span>
                     )}
                   </td>
-                  <td className={`px-2 py-2 text-right font-semibold align-top whitespace-nowrap ${conf.color}`}>
-                    {r.has_2025 ? `${Math.round(r.confidence * 100)}%` : <span className="text-gray-400 font-normal">no '25</span>}
+                  <td className={`px-2 py-2 text-right align-top whitespace-nowrap font-semibold ${
+                    r.pickType === "noData"
+                      ? "text-gray-400 font-normal"
+                      : r.pickType === "reach"
+                        ? "text-blue-600"
+                        : conf.color
+                  }`}>
+                    {confidenceLabel(r)}
                   </td>
                 </tr>
               );
@@ -516,6 +617,114 @@ function PivotTable({ rows, rank, hasMore, remaining, onShowMore }: PivotTablePr
       )}
     </>
   );
+}
+
+function SortableTh({
+  label,
+  col,
+  sortCol,
+  sortDir,
+  onSort,
+  align = "left",
+  className = "",
+}: {
+  label: string;
+  col: SortColumn;
+  sortCol: SortColumn;
+  sortDir: SortDir;
+  onSort: (col: SortColumn) => void;
+  align?: "left" | "right" | "center";
+  className?: string;
+}) {
+  const active = sortCol === col;
+  const alignClass =
+    align === "right" ? "text-right" : align === "center" ? "text-center" : "text-left";
+  const justifyClass =
+    align === "right"
+      ? "justify-end"
+      : align === "center"
+        ? "justify-center"
+        : "justify-start";
+  return (
+    <th className={`font-semibold px-2 py-2 ${alignClass} ${className}`}>
+      <button
+        type="button"
+        onClick={() => onSort(col)}
+        className={`group inline-flex items-center gap-0.5 ${justifyClass} hover:text-gray-900 transition ${
+          active ? "text-gray-900" : "text-gray-500"
+        }`}
+        aria-sort={active ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
+        title={
+          active
+            ? `Sorted ${sortDir === "asc" ? "ascending" : "descending"}. Click to reverse.`
+            : `Sort by ${label}`
+        }
+      >
+        <span>{label}</span>
+        <SortArrow active={active} dir={sortDir} />
+      </button>
+    </th>
+  );
+}
+
+function SortArrow({ active, dir }: { active: boolean; dir: SortDir }) {
+  if (!active) {
+    return (
+      <svg
+        className="w-3 h-3 text-gray-300 group-hover:text-gray-400"
+        viewBox="0 0 12 12"
+        fill="currentColor"
+        aria-hidden="true"
+      >
+        <path d="M6 1.5l3 3.5H3l3-3.5zM6 10.5l-3-3.5h6l-3 3.5z" />
+      </svg>
+    );
+  }
+  return dir === "asc" ? (
+    <svg className="w-3 h-3" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
+      <path d="M6 2l4 5H2l4-5z" />
+    </svg>
+  ) : (
+    <svg className="w-3 h-3" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
+      <path d="M6 10L2 5h8l-4 5z" />
+    </svg>
+  );
+}
+
+function PickBadge({ pick, margin }: { pick: PickType; margin: number | null }) {
+  if (pick === "noData") {
+    return <span className="text-gray-300 text-[11px]">—</span>;
+  }
+  const styles: Record<Exclude<PickType, "noData">, string> = {
+    safe: "bg-emerald-100 text-emerald-800 border-emerald-200",
+    target: "bg-amber-100 text-amber-800 border-amber-200",
+    reach: "bg-blue-100 text-blue-800 border-blue-200",
+  };
+  const label: Record<Exclude<PickType, "noData">, string> = {
+    safe: "SAFE",
+    target: "TARGET",
+    reach: "REACH",
+  };
+  const tooltip =
+    margin == null
+      ? undefined
+      : margin >= 0
+        ? `+${margin.toLocaleString()} ranks above your rank (eligible)`
+        : `${margin.toLocaleString()} below your rank (reach pick)`;
+  return (
+    <span
+      className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${styles[pick]}`}
+      title={tooltip}
+    >
+      {label[pick]}
+    </span>
+  );
+}
+
+function confidenceLabel(r: PivotRow) {
+  if (r.pickType === "noData") return <span>no '25</span>;
+  if (r.pickType === "reach") return <span>Reach</span>;
+  return <span>{Math.round(r.confidence * 100)}%</span>;
 }
 
 function RankCell({
