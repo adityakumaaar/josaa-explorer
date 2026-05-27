@@ -1028,7 +1028,14 @@ class TestRankWindowAndPrimaryYear:
         )
 
     def test_rank_window_min_only(self, db):
-        """min_rank-only narrows the floor without changing the upper bound."""
+        """min_rank-only narrows the floor without changing the upper bound.
+
+        Home-state OS/AI rows are intentionally fetched regardless of the
+        window so the pivot table can show both OS and HS ranks for the same
+        program side-by-side (the user is a strong reach on OS but eligible
+        via HS, so the OS rank is useful context). All other rows must still
+        satisfy closing_rank >= min_rank.
+        """
         results = search_colleges(
             db=db, rank=33157, category="General",
             gender="Male", home_state="Assam",
@@ -1038,9 +1045,17 @@ class TestRankWindowAndPrimaryYear:
         assert len(results) > 0
         for r in results:
             cr = r["latest_closing_rank"]
-            assert cr is None or cr >= 40000, (
-                f"min_rank=40000 should drop closing ranks below it, got {cr}"
+            # Home-state (Assam) OS/AI rows are intentionally included outside
+            # the window for pivot display — they are not subject to min_rank.
+            is_home_state_os_ai = (
+                r.get("quota") in ("OS", "AI")
+                and r.get("state", "").lower() == "assam"
             )
+            if not is_home_state_os_ai:
+                assert cr is None or cr >= 40000, (
+                    f"min_rank=40000 should drop non-home-state closing ranks "
+                    f"below it, got {cr} for {r.get('institute')} ({r.get('quota')})"
+                )
 
 
 class TestInstituteTypeFiltering:

@@ -123,7 +123,17 @@ def search_colleges(
                 ORCRRecord.quota == "HS",
                 ORCRRecord.closing_rank >= effective_rank,
             )
-            base_filters.append(or_(window_cond, hs_bypass))
+            # Also fetch OS/AI rows for institutes located in the user's home
+            # state, regardless of the window. These are typically 1-2 NITs
+            # (e.g. NIT Silchar for Assam). Their OS/AI closing rank may be
+            # well below the window floor (strong reach on OS) but they belong
+            # in the pivot so the table shows the OS rank alongside the HS
+            # rank for the same program and sorts them to the top.
+            home_state_os_ai = and_(
+                ORCRRecord.state == home_state,
+                ORCRRecord.quota.in_(["OS", "AI"]),
+            )
+            base_filters.append(or_(window_cond, hs_bypass, home_state_os_ai))
         else:
             base_filters.append(window_cond)
     else:
