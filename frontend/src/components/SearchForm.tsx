@@ -215,8 +215,9 @@ export default function SearchForm({ onSearch, loading, initialParams }: Props) 
           />
         </div>
         <p className="text-[11px] text-gray-400 mt-1">
-          Show colleges with 2025 closing rank in this range. Leave blank to use
-          your rank as the upper bound.
+          Show colleges with 2025 closing rank in this range. Leave both blank
+          to only show colleges you qualify for (closing rank ≥ your rank). Set
+          a min lower than your rank to include reach picks.
         </p>
         {windowError && (
           <p className="text-[11px] text-red-600 mt-1">{windowError}</p>
