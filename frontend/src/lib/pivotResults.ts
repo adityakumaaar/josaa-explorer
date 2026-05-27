@@ -188,6 +188,17 @@ export function pivotResults(
 
 const orderKey = (n: number | null) => (n == null ? Number.POSITIVE_INFINITY : n);
 
+// For sorting by the OS/AI column, HS-bypass rows (osAi_2025 == null but
+// hs_2025 present) should sort by their HS rank rather than being pushed to
+// the bottom. This keeps home-state-eligible rows mixed into the list at
+// their natural rank position instead of always appearing last.
+const osAiOrderKey = (row: PivotRow) =>
+  row.osAi_2025 != null
+    ? row.osAi_2025
+    : row.hs_2025 != null
+      ? row.hs_2025
+      : Number.POSITIVE_INFINITY;
+
 /**
  * Default sort: 2025 OS/AI asc → confidence desc.
  * OS and AI are mutually exclusive at the program level (NIT vs IIIT/GFTI),
@@ -196,7 +207,7 @@ const orderKey = (n: number | null) => (n == null ? Number.POSITIVE_INFINITY : n
  */
 export function sortPivotByOsAi(rows: PivotRow[]): PivotRow[] {
   return [...rows].sort((a, b) => {
-    const osAiDiff = orderKey(a.osAi_2025) - orderKey(b.osAi_2025);
+    const osAiDiff = osAiOrderKey(a) - osAiOrderKey(b);
     if (osAiDiff !== 0) return osAiDiff;
     return b.confidence - a.confidence;
   });
@@ -216,7 +227,7 @@ export function sortPivotByMatch(rows: PivotRow[]): PivotRow[] {
   return [...rows].sort(
     (a, b) =>
       b.confidence - a.confidence ||
-      orderKey(a.osAi_2025) - orderKey(b.osAi_2025),
+      osAiOrderKey(a) - osAiOrderKey(b),
   );
 }
 
@@ -265,7 +276,7 @@ function compareForColumn(a: PivotRow, b: PivotRow, col: SortColumn): number {
     case "hs_2025":
       return orderKey(a.hs_2025) - orderKey(b.hs_2025);
     case "osAi_2025":
-      return orderKey(a.osAi_2025) - orderKey(b.osAi_2025);
+      return osAiOrderKey(a) - osAiOrderKey(b);
     case "pickType":
       return PICK_ORDER[a.pickType] - PICK_ORDER[b.pickType];
     case "confidence":
@@ -286,7 +297,7 @@ export function sortPivotBy(
   return [...rows].sort((a, b) => {
     const primary = compareForColumn(a, b, column) * sign;
     if (primary !== 0) return primary;
-    const tieOsAi = orderKey(a.osAi_2025) - orderKey(b.osAi_2025);
+    const tieOsAi = osAiOrderKey(a) - osAiOrderKey(b);
     if (tieOsAi !== 0) return tieOsAi;
     return (
       a.institute.localeCompare(b.institute) ||
