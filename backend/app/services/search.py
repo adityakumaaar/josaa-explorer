@@ -2,7 +2,7 @@
 
 from collections import defaultdict
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, or_, and_
 from ..models.database import ORCRRecord
 from ..models.institute_states import INSTITUTE_STATE_MAP
 
@@ -95,19 +95,39 @@ def search_colleges(
 
     # Closing-rank filter: explicit window if provided, else implicit
     # "must be >= my rank" (i.e. user can plausibly qualify).
+    #
+    # When a home state is provided and a rank window is active, HS quota rows
+    # bypass the window entirely — they only need to satisfy
+    # closing_rank >= effective_rank so the user is actually eligible. This
+    # prevents the common case where a user CAN enter a college via their
+    # home-state quota (HS closing >> rank) but the college's OS closing rank
+    # sits below the window floor, causing both rows to be excluded.
     base_filters = [
         ORCRRecord.seat_type.in_(seat_types),
         ORCRRecord.gender.in_(gender_filter),
         ORCRRecord.is_preparatory == False,  # noqa: E712
     ]
+    effective_rank = min(rank, crl_rank) if crl_rank else rank
     if min_rank is not None or max_rank is not None:
+        window_parts = []
         if min_rank is not None:
-            base_filters.append(ORCRRecord.closing_rank >= min_rank)
+            window_parts.append(ORCRRecord.closing_rank >= min_rank)
         if max_rank is not None:
-            base_filters.append(ORCRRecord.closing_rank <= max_rank)
+            window_parts.append(ORCRRecord.closing_rank <= max_rank)
+        window_cond = and_(*window_parts)
+
+        if home_state:
+            # HS quota rows for the user's home-state are always included as
+            # long as the user can qualify (closing >= effective_rank).
+            hs_bypass = and_(
+                ORCRRecord.quota == "HS",
+                ORCRRecord.closing_rank >= effective_rank,
+            )
+            base_filters.append(or_(window_cond, hs_bypass))
+        else:
+            base_filters.append(window_cond)
     else:
-        implicit_floor = min(rank, crl_rank) if crl_rank else rank
-        base_filters.append(ORCRRecord.closing_rank >= implicit_floor)
+        base_filters.append(ORCRRecord.closing_rank >= effective_rank)
 
     query = db.query(ORCRRecord).filter(*base_filters)
     if institute_types:
@@ -115,7 +135,6 @@ def search_colleges(
     if program_query:
         query = query.filter(ORCRRecord.program.ilike(f"%{program_query}%"))
     if branch_keywords:
-        from sqlalchemy import or_
         kw_conditions = [ORCRRecord.program.ilike(f"%{kw}%") for kw in branch_keywords]
         query = query.filter(or_(*kw_conditions))
     if college_states:
